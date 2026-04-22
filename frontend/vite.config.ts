@@ -14,6 +14,9 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       host: true,
       allowedHosts: true,
+      hmr: env.VITE_HMR_CLIENT_PORT
+        ? { clientPort: parseInt(env.VITE_HMR_CLIENT_PORT), protocol: "ws" }
+        : true,
       proxy: {
         "/api": {
           target: backendTarget,

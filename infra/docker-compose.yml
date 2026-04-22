@@ -89,6 +89,7 @@ services:
     environment:
       VITE_API_URL: ""
       VITE_BACKEND_TARGET: http://royd_backend:8000
+      VITE_HMR_CLIENT_PORT: "${NGINX_PORT:-80}"
     ports:
       - "${FRONTEND_PORT:-5174}:5173"
     volumes:
