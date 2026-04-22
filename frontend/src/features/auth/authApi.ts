@@ -15,6 +15,9 @@ export const authApi = api.injectEndpoints({
     loginStudent: build.mutation<TokenPair, { username: string; password: string }>({
       query: (body) => ({ url: "/auth/login/hemis", method: "POST", body }),
     }),
+    exchangeHemisToken: build.mutation<TokenPair, { hemis_token: string }>({
+      query: (body) => ({ url: "/auth/hemis/exchange", method: "POST", body }),
+    }),
     getMe: build.query<AuthUser, void>({
       query: () => "/auth/me",
       providesTags: ["User"],
@@ -25,5 +28,10 @@ export const authApi = api.injectEndpoints({
   }),
 });
 
-export const { useLoginStaffMutation, useLoginStudentMutation, useGetMeQuery, useLogoutMutation } =
-  authApi;
+export const {
+  useLoginStaffMutation,
+  useLoginStudentMutation,
+  useExchangeHemisTokenMutation,
+  useGetMeQuery,
+  useLogoutMutation,
+} = authApi;

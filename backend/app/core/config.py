@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     jwt_refresh_ttl_days: int = 7
 
     hemis_base_url: str = "https://student.ndki.uz"
+    hemis_login_path: str = "/rest/v1/auth/login"
+    hemis_me_path: str = "/rest/v1/account/me"
     hemis_use_mock: bool = True
 
     smtp_host: str = "localhost"

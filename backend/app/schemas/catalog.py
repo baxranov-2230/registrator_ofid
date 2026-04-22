@@ -6,7 +6,19 @@ class FacultyOut(BaseModel):
     id: int
     name: str
     code: str
+    hemis_id: str | None = None
     contact_email: str | None = None
+    is_active: bool
+
+
+class StudentGroupOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    faculty_id: int | None = None
+    name: str
+    hemis_id: str | None = None
+    specialty: str | None = None
+    education_year: str | None = None
     is_active: bool
 
 

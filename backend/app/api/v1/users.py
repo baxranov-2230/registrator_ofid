@@ -77,6 +77,33 @@ async def create_user(
     return UserOut.model_validate(user)
 
 
+@router.delete(
+    "/{user_id}",
+    status_code=204,
+    dependencies=[Depends(require_roles(Role.ADMIN))],
+)
+async def delete_user(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(get_current_user),
+) -> None:
+    if user_id == actor.id:
+        raise HTTPException(status_code=400, detail="O'zingizni o'chira olmaysiz")
+    user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_active = False
+    await log_action(
+        db,
+        user_id=actor.id,
+        action="user.deactivate",
+        entity_type="user",
+        entity_id=user.id,
+    )
+    await db.commit()
+    return None
+
+
 @router.patch(
     "/{user_id}",
     response_model=UserOut,

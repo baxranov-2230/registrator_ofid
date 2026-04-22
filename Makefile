@@ -15,25 +15,25 @@ up:
 	cd infra && docker compose --env-file ../.env up -d --build
 
 down:
-	cd infra && docker compose down
+	cd infra && docker compose --env-file ../.env down
 
 logs:
-	cd infra && docker compose logs -f --tail=100
+	cd infra && docker compose --env-file ../.env logs -f --tail=100
 
 ps:
-	cd infra && docker compose ps
+	cd infra && docker compose --env-file ../.env ps
 
 migrate:
-	cd infra && docker compose exec backend uv run alembic upgrade head
+	cd infra && docker compose --env-file ../.env exec backend .venv/bin/alembic upgrade head
 
 seed:
-	cd infra && docker compose exec backend uv run python -m app.seed
+	cd infra && docker compose --env-file ../.env exec backend .venv/bin/python -m app.seed
 
 backend-shell:
-	cd infra && docker compose exec backend sh
+	cd infra && docker compose --env-file ../.env exec backend sh
 
 db-shell:
-	cd infra && docker compose exec postgres psql -U royd -d royd
+	cd infra && docker compose --env-file ../.env exec postgres psql -U royd -d royd
 
 test:
 	cd backend && uv run pytest -q
@@ -48,4 +48,4 @@ format:
 	cd frontend && npm run format || true
 
 clean:
-	cd infra && docker compose down -v
+	cd infra && docker compose --env-file ../.env down -v

@@ -11,6 +11,10 @@ class HemisLoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=128)
 
 
+class HemisTokenRequest(BaseModel):
+    hemis_token: str = Field(min_length=10, max_length=2048)
+
+
 class RefreshRequest(BaseModel):
     refresh_token: str
 

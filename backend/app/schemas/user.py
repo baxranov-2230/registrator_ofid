@@ -23,6 +23,20 @@ class UserOut(BaseModel):
     is_active: bool
     last_login_at: datetime | None = None
     created_at: datetime
+    # Student profile fields (populated from HEMIS)
+    birth_date: str | None = None
+    gender: str | None = None
+    address: str | None = None
+    image_path: str | None = None
+    specialty: str | None = None
+    group_name: str | None = None
+    level: int | None = None
+    semester: int | None = None
+    student_status: str | None = None
+    education_form: str | None = None
+    education_type: str | None = None
+    education_lang: str | None = None
+    payment_form: str | None = None
 
 
 class UserCreate(BaseModel):

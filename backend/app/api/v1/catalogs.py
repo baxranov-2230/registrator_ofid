@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
 from app.core.security import get_current_user, require_roles
-from app.models import Department, Faculty, RequestCategory, Role, User
+from app.models import Department, Faculty, RequestCategory, Role, StudentGroup, User
 from app.schemas.catalog import (
     CategoryCreate,
     CategoryOut,
@@ -13,6 +13,7 @@ from app.schemas.catalog import (
     DepartmentOut,
     FacultyCreate,
     FacultyOut,
+    StudentGroupOut,
 )
 
 router = APIRouter(tags=["catalogs"])
@@ -40,6 +41,19 @@ async def list_departments(
         stmt = stmt.where(Department.faculty_id == faculty_id)
     rows = (await db.execute(stmt)).scalars().all()
     return [DepartmentOut.model_validate(r) for r in rows]
+
+
+@router.get("/groups", response_model=list[StudentGroupOut])
+async def list_student_groups(
+    faculty_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> list[StudentGroupOut]:
+    stmt = select(StudentGroup).order_by(StudentGroup.name)
+    if faculty_id is not None:
+        stmt = stmt.where(StudentGroup.faculty_id == faculty_id)
+    rows = (await db.execute(stmt)).scalars().all()
+    return [StudentGroupOut.model_validate(r) for r in rows]
 
 
 @router.get("/categories", response_model=list[CategoryTreeNode])

@@ -15,6 +15,7 @@ class Faculty(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     code: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)
+    hemis_id: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
     dean_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -26,6 +27,9 @@ class Faculty(Base, TimestampMixin):
     )
     users: Mapped[list["User"]] = relationship(
         back_populates="faculty", foreign_keys="User.faculty_id"
+    )
+    groups: Mapped[list["StudentGroup"]] = relationship(
+        back_populates="faculty", cascade="all, delete-orphan"
     )
 
 
@@ -45,4 +49,23 @@ class Department(Base, TimestampMixin):
     faculty: Mapped["Faculty"] = relationship(back_populates="departments")
     users: Mapped[list["User"]] = relationship(
         back_populates="department", foreign_keys="User.department_id"
+    )
+
+
+class StudentGroup(Base, TimestampMixin):
+    __tablename__ = "student_groups"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    faculty_id: Mapped[int | None] = mapped_column(
+        ForeignKey("faculties.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(128), nullable=False, index=True)
+    hemis_id: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    specialty: Mapped[str | None] = mapped_column(String(255))
+    education_year: Mapped[str | None] = mapped_column(String(32))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    faculty: Mapped["Faculty | None"] = relationship(back_populates="groups")
+    users: Mapped[list["User"]] = relationship(
+        back_populates="student_group", foreign_keys="User.student_group_id"
     )

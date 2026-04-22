@@ -7,6 +7,8 @@ import {
   Box,
   Button,
   Container,
+  IconButton,
+  InputAdornment,
   Paper,
   Stack,
   Tab,
@@ -14,9 +16,14 @@ import {
   TextField,
   Typography,
 } from "@mui/material";
+import { Visibility, VisibilityOff } from "@mui/icons-material";
 
-import { useLoginStaffMutation, useLoginStudentMutation } from "@/features/auth/authApi";
+import {
+  useExchangeHemisTokenMutation,
+  useLoginStaffMutation,
+} from "@/features/auth/authApi";
 import { tokensReceived } from "@/features/auth/authSlice";
+import { hemisLogin } from "@/features/auth/hemisService";
 
 export default function LoginPage() {
   const { t } = useTranslation();
@@ -24,11 +31,13 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const [tab, setTab] = useState<"staff" | "student">("student");
   const [err, setErr] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   const [loginStaff, staffState] = useLoginStaffMutation();
-  const [loginStudent, studentState] = useLoginStudentMutation();
+  const [exchangeHemisToken, exchangeState] = useExchangeHemisTokenMutation();
+  const [studentLoading, setStudentLoading] = useState(false);
 
-  const loading = staffState.isLoading || studentState.isLoading;
+  const loading = staffState.isLoading || exchangeState.isLoading || studentLoading;
 
   const handleStaff = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -49,16 +58,22 @@ export default function LoginPage() {
   const handleStudent = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErr(null);
+    setStudentLoading(true);
     const data = new FormData(e.currentTarget);
     try {
-      const res = await loginStudent({
-        username: String(data.get("username")),
-        password: String(data.get("password")),
-      }).unwrap();
+      // Step 1 — authenticate directly against HEMIS (student.ndki.uz) via Vite proxy
+      const { token: hemisToken } = await hemisLogin(
+        String(data.get("username")),
+        String(data.get("password")),
+      );
+      // Step 2 — exchange HEMIS token for local JWT (backend validates /me + syncs user)
+      const res = await exchangeHemisToken({ hemis_token: hemisToken }).unwrap();
       dispatch(tokensReceived({ access: res.access_token, refresh: res.refresh_token }));
       navigate("/");
     } catch (e: unknown) {
-      setErr(extractError(e) || t("auth.loginFailed"));
+      setErr(extractError(e) || (e instanceof Error ? e.message : t("auth.loginFailed")));
+    } finally {
+      setStudentLoading(false);
     }
   };
 
@@ -106,10 +121,19 @@ export default function LoginPage() {
               <TextField
                 name="password"
                 label={t("auth.password")}
-                type="password"
+                type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
                 required
                 fullWidth
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton onClick={() => setShowPassword((v) => !v)} edge="end">
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
               />
               <Button type="submit" variant="contained" size="large" disabled={loading}>
                 {t("auth.submit")}
@@ -133,10 +157,19 @@ export default function LoginPage() {
               <TextField
                 name="password"
                 label={t("auth.password")}
-                type="password"
+                type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
                 required
                 fullWidth
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton onClick={() => setShowPassword((v) => !v)} edge="end">
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
               />
               <Button type="submit" variant="contained" size="large" disabled={loading}>
                 {t("auth.submit")}

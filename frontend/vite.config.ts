@@ -24,6 +24,12 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           ws: true,
         },
+        "/hemis": {
+          target: "https://student.ndki.uz",
+          changeOrigin: true,
+          secure: true,
+          rewrite: (path) => path.replace(/^\/hemis/, "/rest/v1"),
+        },
       },
     },
   };

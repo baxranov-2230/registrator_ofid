@@ -16,17 +16,49 @@
     "welcome": "Xush kelibsiz"
   },
   "nav": {
-    "dashboard": "Asosiy",
-    "myRequests": "Mening murojaatlarim",
+    "menu": "Menyu",
+    "dashboard": "Boshqaruv paneli",
+    "myRequests": "Murojaatlarim",
     "newRequest": "Yangi murojaat",
     "inbox": "Kiruvchi murojaatlar",
     "queue": "Ish navbatim",
     "users": "Foydalanuvchilar",
-    "categories": "Turlar",
+    "categories": "Murojaat turlari",
     "faculties": "Fakultetlar",
+    "groups": "Guruhlar",
     "audit": "Audit jurnali",
+    "analytics": "Analitika",
     "notifications": "Bildirishnomalar",
     "profile": "Profil"
+  },
+  "role": {
+    "student": "Talaba",
+    "registrator": "Registrator",
+    "staff": "Xodim",
+    "admin": "Administrator",
+    "leadership": "Rahbariyat"
+  },
+  "dashboard": {
+    "greeting": "Assalomu alaykum, {{name}}!",
+    "subtitle": "ROYD platformasiga xush kelibsiz",
+    "recentActivity": "So'nggi faollik",
+    "recentActivitySub": "Oxirgi yangilanishlar va o'zgarishlar",
+    "noActivity": "Hozircha faollik yo'q",
+    "profile": "Profilim",
+    "viewProfile": "Profilni ko'rish",
+    "stats": {
+      "myRequests": "Murojaatlarim",
+      "total": "Jami",
+      "inProgress": "Jarayonda",
+      "completed": "Bajarilgan",
+      "completedToday": "Bugun bajarildi",
+      "overdue": "Muddati o'tgan",
+      "incoming": "Kiruvchi",
+      "slaRisk": "SLA xavfi",
+      "totalUsers": "Foydalanuvchilar",
+      "activeRequests": "Faol murojaatlar",
+      "slaBreaches": "SLA buzilishi"
+    }
   },
   "requests": {
     "status": {
@@ -75,6 +107,116 @@
     "yes": "Ha",
     "no": "Yo'q",
     "error": "Xato",
-    "success": "Muvaffaqiyatli"
+    "success": "Muvaffaqiyatli",
+    "viewAll": "Hammasini ko'rish"
+  },
+  "users": {
+    "subtitle": "Platformadagi barcha foydalanuvchilarni boshqarish",
+    "totalUsers": "Jami foydalanuvchilar",
+    "newUser": "Yangi foydalanuvchi",
+    "editUser": "Tahrirlash",
+    "searchPlaceholder": "Ism, email yoki HEMIS ID bo'yicha qidirish...",
+    "roleFilter": "Rol bo'yicha filtr",
+    "allRoles": "Barcha rollar",
+    "noResults": "Foydalanuvchilar topilmadi",
+    "deactivate": "Nofaol qilish",
+    "deactivateConfirm": "{{name}} foydalanuvchisini nofaol qilib qo'yasizmi?",
+    "columns": {
+      "user": "Foydalanuvchi",
+      "role": "Rol",
+      "contact": "Aloqa",
+      "active": "Faol",
+      "actions": "Amallar"
+    },
+    "form": {
+      "fullName": "F.I.Sh.",
+      "email": "Elektron pochta",
+      "phone": "Telefon",
+      "password": "Parol",
+      "passwordChange": "Yangi parol (ixtiyoriy)",
+      "passwordHint": "Bo'sh qoldiring — parol o'zgarmaydi",
+      "role": "Rol",
+      "faculty": "Fakultet",
+      "active": "Faol"
+    }
+  },
+  "faculties": {
+    "subtitle": "Fakultet va kafedralarni boshqarish",
+    "autoHint": "Fakultetlar avtomatik yaratiladi — talaba HEMIS orqali login qilganida uning fakulteti mavjud bo'lmasa, o'z-o'zidan qo'shiladi. Qo'lda qo'shish ixtiyoriy.",
+    "fromHemis": "HEMIS orqali avtomatik yaratilgan",
+    "newFaculty": "Yangi fakultet",
+    "empty": "Fakultetlar mavjud emas",
+    "departments": "Kafedralar",
+    "form": {
+      "name": "Fakultet nomi",
+      "code": "Kod",
+      "codeHint": "Qisqa kod, masalan: IT, EC",
+      "email": "Aloqa email"
+    }
+  },
+  "groups": {
+    "title": "Talaba guruhlari",
+    "subtitle": "HEMIS orqali avtomatik yaratilgan guruhlar",
+    "autoHint": "Guruhlar qo'lda yaratilmaydi — talaba HEMIS orqali login qilganida uning guruhi o'z-o'zidan qo'shiladi.",
+    "total": "Jami guruhlar",
+    "empty": "Guruhlar hali yo'q",
+    "emptyHint": "Birinchi talaba login qilganida guruh avtomatik paydo bo'ladi",
+    "searchPlaceholder": "Guruh nomi yoki mutaxassislik bo'yicha qidirish...",
+    "facultyFilter": "Fakultet bo'yicha filtr",
+    "allFaculties": "Barcha fakultetlar",
+    "columns": {
+      "name": "Guruh",
+      "faculty": "Fakultet",
+      "specialty": "Mutaxassislik",
+      "year": "O'quv yili",
+      "hemisId": "HEMIS ID"
+    }
+  },
+  "categories": {
+    "subtitle": "Murojaat turlari va SLA muddatlari",
+    "newCategory": "Yangi tur",
+    "newSubcategory": "Yangi sub-tur",
+    "addChild": "Sub-tur qo'shish",
+    "empty": "Murojaat turlari mavjud emas",
+    "form": {
+      "name": "Nomi",
+      "slaHours": "SLA (soat)",
+      "priority": "Ustuvorlik"
+    }
+  },
+  "audit": {
+    "subtitle": "Tizimdagi barcha amallarning jurnali",
+    "empty": "Audit yozuvlari topilmadi",
+    "entityType": "Obyekt turi",
+    "action": "Amal",
+    "columns": {
+      "time": "Vaqti",
+      "actor": "Kim",
+      "action": "Amal",
+      "entity": "Obyekt",
+      "changes": "O'zgarishlar",
+      "ip": "IP"
+    }
+  },
+  "profile": {
+    "contact": "Aloqa ma'lumotlari",
+    "academic": "Akademik ma'lumotlar",
+    "email": "Elektron pochta",
+    "phone": "Telefon",
+    "birthDate": "Tug'ilgan sana",
+    "address": "Manzil",
+    "gender": "Jinsi",
+    "male": "Erkak",
+    "female": "Ayol",
+    "studentId": "Talaba ID (HEMIS)",
+    "specialty": "Mutaxassislik",
+    "group": "Guruh",
+    "level": "Kursi",
+    "semester": "Semestri",
+    "studentStatus": "Talaba holati",
+    "educationForm": "Ta'lim shakli",
+    "educationType": "Ta'lim turi",
+    "educationLang": "Ta'lim tili",
+    "paymentForm": "To'lov shakli"
   }
 }

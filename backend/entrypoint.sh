@@ -2,11 +2,6 @@
 set -e
 cd /app
 
-if [ ! -x .venv/bin/uvicorn ]; then
-    echo "No venv at ./.venv — running uv sync (requires network)..."
-    uv sync --no-dev --frozen
-fi
-
 echo "Waiting for postgres to be resolvable..."
 for i in $(seq 1 30); do
     if .venv/bin/python -c "import socket; socket.gethostbyname('postgres')" 2>/dev/null; then

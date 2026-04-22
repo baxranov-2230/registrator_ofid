@@ -4,10 +4,27 @@ export interface AuthUser {
   id: number;
   full_name: string;
   email: string | null;
-  role: { id: number; name: string };
+  phone: string | null;
+  role: { id: number; name: string; description?: string | null };
   faculty_id: number | null;
   department_id: number | null;
   external_student_id: string | null;
+  is_active: boolean;
+  last_login_at: string | null;
+  created_at: string;
+  birth_date: string | null;
+  gender: string | null;
+  address: string | null;
+  image_path: string | null;
+  specialty: string | null;
+  group_name: string | null;
+  level: number | null;
+  semester: number | null;
+  student_status: string | null;
+  education_form: string | null;
+  education_type: string | null;
+  education_lang: string | null;
+  payment_form: string | null;
 }
 
 interface AuthState {
