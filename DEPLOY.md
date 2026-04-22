@@ -205,6 +205,63 @@ sudo systemctl stop nginx   # host nginx ni to'xtatish
 
 ---
 
+## Domenni bog'lash
+
+### 1. DNS sozlash
+
+Domen sotib olgan joyda (beget, reg.ru, namecheap va h.k.) DNS sozlamalariga kirib **A record** qo'shing:
+
+| Turi | Nomi | Qiymati          |
+|------|------|------------------|
+| A    | @    | serverning IP si |
+| A    | www  | serverning IP si |
+
+Server IP ni bilish: `./deploy.sh ips`
+
+DNS tarqalishi 5 daqiqadan 24 soatgacha. Tekshirish:
+```bash
+ping royd.ndki.uz
+```
+
+### 2. .env ga domen qo'shish
+
+```env
+NGINX_HOST=royd.ndki.uz
+NGINX_PORT=80
+```
+
+### 3. Qayta ishga tushirish
+
+```bash
+./deploy.sh down
+./deploy.sh up
+```
+
+Endi `http://royd.ndki.uz` dan platforma ochiladi.
+
+### 4. HTTPS (SSL sertifikat) — ixtiyoriy
+
+Domenni serverga bog'laganingizdan keyin bepul SSL qo'shish:
+
+```bash
+# Certbot o'rnatish
+sudo apt install -y certbot
+
+# Sertifikat olish (port 80 vaqtincha bo'shatiladi)
+./deploy.sh down
+sudo certbot certonly --standalone -d royd.ndki.uz -d www.royd.ndki.uz
+./deploy.sh up
+```
+
+SSL sertifikat olganingizdan keyin `infra/nginx.conf` ga HTTPS blok qo'shing yoki Let's Encrypt avtomatik yangilanishi uchun cron qo'shing:
+
+```bash
+# Har 90 kunda avtomatik yangilanish
+echo "0 3 * * * root certbot renew --quiet --pre-hook 'docker compose -f /opt/royd/infra/docker-compose.yml down' --post-hook 'docker compose -f /opt/royd/infra/docker-compose.yml up -d'" | sudo tee /etc/cron.d/certbot-royd
+```
+
+---
+
 ## Production uchun qo'shimcha
 
 ### HEMIS (haqiqiy)
