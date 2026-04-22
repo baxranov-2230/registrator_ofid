@@ -1,6 +1,7 @@
 services:
   postgres:
     image: postgres:16-alpine
+    container_name: royd_postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-royd}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-royd_dev_pw}
@@ -14,9 +15,13 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    networks:
+      - royd_network
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
+    container_name: royd_redis
     command: ["redis-server", "--appendonly", "yes"]
     ports:
       - "${REDIS_PORT:-6380}:6379"
@@ -27,27 +32,35 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    networks:
+      - royd_network
+    restart: unless-stopped
 
   mailhog:
     image: mailhog/mailhog:latest
+    container_name: royd_mailhog
     ports:
       - "${MAILHOG_SMTP_PORT:-1025}:1025"
       - "${MAILHOG_UI_PORT:-8025}:8025"
+    networks:
+      - royd_network
+    restart: unless-stopped
 
   backend:
     build:
       context: ../backend
       dockerfile: ../infra/backend.Dockerfile
+    container_name: royd_backend
     environment:
       ENV: dev
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-royd}:${POSTGRES_PASSWORD:-royd_dev_pw}@postgres:5432/${POSTGRES_DB:-royd}
-      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-royd}:${POSTGRES_PASSWORD:-royd_dev_pw}@royd_postgres:5432/${POSTGRES_DB:-royd}
+      REDIS_URL: redis://royd_redis:6379/0
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-to-32-chars-pls}
       HEMIS_USE_MOCK: "false"
       HEMIS_BASE_URL: "https://student.ndki.uz"
       HEMIS_LOGIN_PATH: "/rest/v1/auth/login"
       HEMIS_ME_PATH: "/rest/v1/account/me"
-      SMTP_HOST: mailhog
+      SMTP_HOST: royd_mailhog
       SMTP_PORT: "1025"
       STORAGE_DIR: /app/storage/uploads
       CORS_ORIGINS: "*"
@@ -65,13 +78,17 @@ services:
       mailhog:
         condition: service_started
     command: ["/app/entrypoint.sh"]
+    networks:
+      - royd_network
+    restart: unless-stopped
 
   frontend:
     image: node:20-alpine
+    container_name: royd_frontend
     working_dir: /app
     environment:
       VITE_API_URL: ""
-      VITE_BACKEND_TARGET: http://backend:8000
+      VITE_BACKEND_TARGET: http://royd_backend:8000
     ports:
       - "${FRONTEND_PORT:-5174}:5173"
     volumes:
@@ -79,19 +96,22 @@ services:
     command: ["sh", "-c", "npm install && npm run dev -- --host 0.0.0.0"]
     depends_on:
       - backend
+    networks:
+      - royd_network
+    restart: unless-stopped
 
   nginx:
     image: nginx:alpine
+    container_name: royd_nginx
     ports:
       - "${NGINX_PORT:-80}:80"
-    environment:
-      NGINX_HOST: ${NGINX_HOST:-_}
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
     depends_on:
       - backend
       - frontend
+    networks:
+      - royd_network
     restart: unless-stopped
 
 volumes:
@@ -99,3 +119,7 @@ volumes:
   redis-data:
   backend-storage:
   backend-venv:
+
+networks:
+  royd_network:
+    driver: bridge
