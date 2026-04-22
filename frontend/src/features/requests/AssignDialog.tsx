@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
@@ -12,8 +12,11 @@ import {
   TextField,
 } from "@mui/material";
 
-import { useListUsersQuery } from "@/features/admin/adminApi";
-import { useAssignRequestMutation } from "@/features/requests/requestsApi";
+import {
+  useAssignRequestMutation,
+  useListAssigneesQuery,
+} from "@/features/requests/requestsApi";
+import { formatApiError } from "@/shared/api/errors";
 
 interface Props {
   requestId: number;
@@ -29,18 +32,12 @@ export default function AssignDialog({
   onClose,
 }: Props) {
   const { t } = useTranslation();
-  const { data: staff = [], isLoading } = useListUsersQuery({ role: "staff" });
-  const { data: registrators = [] } = useListUsersQuery({ role: "registrator" });
+  const { data: candidates = [], isLoading } = useListAssigneesQuery();
   const [assign, state] = useAssignRequestMutation();
 
   const [assigneeId, setAssigneeId] = useState("");
   const [comment, setComment] = useState("");
   const [err, setErr] = useState<string | null>(null);
-
-  const candidates = useMemo(
-    () => [...staff, ...registrators].filter((u) => u.is_active),
-    [staff, registrators],
-  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,8 +55,7 @@ export default function AssignDialog({
       }).unwrap();
       onClose();
     } catch (e: unknown) {
-      const detail = (e as { data?: { detail?: string } }).data?.detail;
-      setErr(detail || t("common.error"));
+      setErr(formatApiError(e, t("common.error")));
     }
   };
 

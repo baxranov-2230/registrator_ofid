@@ -20,15 +20,20 @@ import { useListCategoriesQuery } from "@/features/admin/adminApi";
 import {
   flattenCategories,
   useCreateRequestMutation,
+  useListAssigneesQuery,
 } from "@/features/requests/requestsApi";
+import { formatApiError } from "@/shared/api/errors";
 
 export default function NewRequestPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { data: catTree = [], isLoading: catsLoading } = useListCategoriesQuery();
+  const { data: assignees = [], isLoading: assigneesLoading } =
+    useListAssigneesQuery();
   const [createRequest, createState] = useCreateRequestMutation();
 
   const [categoryId, setCategoryId] = useState<string>("");
+  const [assigneeId, setAssigneeId] = useState<string>("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -50,11 +55,11 @@ export default function NewRequestPage() {
         category_id: Number(categoryId),
         title: title.trim(),
         description: description.trim(),
+        assigned_to: assigneeId ? Number(assigneeId) : null,
       }).unwrap();
       setSubmitted({ id: res.id, tracking: res.tracking_no });
     } catch (e: unknown) {
-      const detail = (e as { data?: { detail?: string } }).data?.detail;
-      setErr(detail || t("common.error"));
+      setErr(formatApiError(e, t("common.error")));
     }
   };
 
@@ -76,6 +81,7 @@ export default function NewRequestPage() {
                 onClick={() => {
                   setSubmitted(null);
                   setCategoryId("");
+                  setAssigneeId("");
                   setTitle("");
                   setDescription("");
                 }}
@@ -129,6 +135,23 @@ export default function NewRequestPage() {
                     <Typography component="span" variant="caption" color="text.secondary" sx={{ ml: 1 }}>
                       · SLA {c.sla_hours}h
                     </Typography>
+                  </MenuItem>
+                ))}
+              </TextField>
+
+              <TextField
+                select
+                label={t("requests.assignee")}
+                value={assigneeId}
+                onChange={(e) => setAssigneeId(e.target.value)}
+                fullWidth
+                disabled={assigneesLoading}
+                helperText={t("requests.assigneeHint")}
+              >
+                <MenuItem value="">{t("requests.autoRoute")}</MenuItem>
+                {assignees.map((a) => (
+                  <MenuItem key={a.id} value={String(a.id)}>
+                    {a.full_name} — {t(`role.${a.role.name}`)}
                   </MenuItem>
                 ))}
               </TextField>

@@ -53,6 +53,7 @@ async def create(
         category_id=data.category_id,
         title=data.title,
         description=data.description,
+        assigned_to=data.assigned_to,
     )
     await log_action(
         db,
@@ -60,8 +61,31 @@ async def create(
         action="request.create",
         entity_type="request",
         entity_id=req.id,
-        new_value={"tracking_no": req.tracking_no, "title": req.title},
+        new_value={
+            "tracking_no": req.tracking_no,
+            "title": req.title,
+            "assigned_to": req.assigned_to,
+        },
     )
+
+    if req.assigned_to:
+        assignee = await db.get(User, req.assigned_to)
+        if assignee:
+            await create_notification(
+                db,
+                user_id=assignee.id,
+                type_=NotificationType.REQUEST_ASSIGNED,
+                title=f"Yangi murojaat: {req.tracking_no}",
+                body=f"Sizga '{req.title}' murojaati biriktirildi.",
+                payload={"request_id": req.id, "tracking_no": req.tracking_no},
+            )
+            if assignee.email:
+                enqueue_email(
+                    assignee.email,
+                    f"ROYD: Yangi murojaat {req.tracking_no}",
+                    f"Sizga '{req.title}' murojaati biriktirildi. Tracking: {req.tracking_no}",
+                )
+
     await db.commit()
     full = await get_request_for_user(db, req.id, user)
     return RequestDetail.model_validate(full)

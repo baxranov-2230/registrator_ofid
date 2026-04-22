@@ -17,6 +17,7 @@ import MyRequestsPage from "@/features/requests/MyRequestsPage";
 import RequestDetailPage from "@/features/requests/RequestDetailPage";
 import RegistratorInboxPage from "@/features/requests/RegistratorInboxPage";
 import StaffQueuePage from "@/features/requests/StaffQueuePage";
+import AllRequestsPage from "@/features/requests/AllRequestsPage";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -55,6 +56,8 @@ export const router = createBrowserRouter([
           {
             element: <RequireAuth roles={["admin", "leadership"]} />,
             children: [
+              { path: "/admin/requests", element: <AllRequestsPage /> },
+              { path: "/admin/requests/:id", element: <RequestDetailPage /> },
               { path: "/admin/users", element: <UsersPage /> },
               { path: "/admin/categories", element: <CategoriesPage /> },
               { path: "/admin/faculties", element: <FacultiesPage /> },

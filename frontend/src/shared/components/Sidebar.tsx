@@ -46,6 +46,7 @@ const NAV_BY_ROLE: Record<string, NavItem[]> = {
   ],
   admin: [
     { label: "nav.dashboard", to: "/dashboard", icon: <DashboardIcon /> },
+    { label: "nav.allRequests", to: "/admin/requests", icon: <InboxIcon /> },
     { label: "nav.users", to: "/admin/users", icon: <PeopleIcon /> },
     { label: "nav.faculties", to: "/admin/faculties", icon: <SchoolIcon /> },
     { label: "nav.groups", to: "/admin/groups", icon: <GroupsIcon /> },
@@ -54,6 +55,7 @@ const NAV_BY_ROLE: Record<string, NavItem[]> = {
   ],
   leadership: [
     { label: "nav.dashboard", to: "/dashboard", icon: <DashboardIcon /> },
+    { label: "nav.allRequests", to: "/admin/requests", icon: <InboxIcon /> },
     { label: "nav.analytics", to: "/leadership/analytics", icon: <BarChartIcon /> },
     { label: "nav.audit", to: "/admin/audit", icon: <HistoryIcon /> },
   ],

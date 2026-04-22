@@ -37,6 +37,7 @@ import {
 } from "@/features/requests/requestsApi";
 import { PRIORITY_COLOR, STATUS_COLOR } from "@/features/requests/statusMeta";
 import AssignDialog from "@/features/requests/AssignDialog";
+import { formatApiError } from "@/shared/api/errors";
 
 const TRANSITIONS_BY_STATUS: Record<RequestStatus, RequestStatus[]> = {
   new: ["accepted", "rejected", "returned"],
@@ -93,8 +94,7 @@ export default function RequestDetailPage() {
       setMessage("");
       setIsInternal(false);
     } catch (e: unknown) {
-      const detail = (e as { data?: { detail?: string } }).data?.detail;
-      setActionErr(detail || t("common.error"));
+      setActionErr(formatApiError(e, t("common.error")));
     }
   };
 
@@ -112,8 +112,7 @@ export default function RequestDetailPage() {
       setTransitionTarget("");
       setTransitionComment("");
     } catch (e: unknown) {
-      const detail = (e as { data?: { detail?: string } }).data?.detail;
-      setActionErr(detail || t("common.error"));
+      setActionErr(formatApiError(e, t("common.error")));
     }
   };
 
@@ -122,8 +121,7 @@ export default function RequestDetailPage() {
     try {
       await uploadFile({ id: requestId, file }).unwrap();
     } catch (e: unknown) {
-      const detail = (e as { data?: { detail?: string } }).data?.detail;
-      setActionErr(detail || t("common.error"));
+      setActionErr(formatApiError(e, t("common.error")));
     }
   };
 

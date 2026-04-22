@@ -26,6 +26,7 @@ import {
   useListDepartmentsQuery,
   useListFacultiesQuery,
 } from "@/features/admin/adminApi";
+import { formatApiError } from "@/shared/api/errors";
 
 export default function FacultiesPage() {
   const { t } = useTranslation();
@@ -151,8 +152,7 @@ function FacultyDialog({ onClose }: { onClose: () => void }) {
       }).unwrap();
       onClose();
     } catch (e: unknown) {
-      const data = (e as { data?: { detail?: string } }).data;
-      setErr(data?.detail || t("common.error"));
+      setErr(formatApiError(e, t("common.error")));
     }
   };
 

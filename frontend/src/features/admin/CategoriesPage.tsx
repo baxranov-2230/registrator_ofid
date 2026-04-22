@@ -26,6 +26,7 @@ import {
   useCreateCategoryMutation,
   useListCategoriesQuery,
 } from "@/features/admin/adminApi";
+import { formatApiError } from "@/shared/api/errors";
 
 const PRIORITY_COLORS: Record<string, string> = {
   low: "#64748B",
@@ -167,8 +168,7 @@ function CategoryDialog({
       }).unwrap();
       onClose();
     } catch (e: unknown) {
-      const data = (e as { data?: { detail?: string } }).data;
-      setErr(data?.detail || t("common.error"));
+      setErr(formatApiError(e, t("common.error")));
     }
   };
 

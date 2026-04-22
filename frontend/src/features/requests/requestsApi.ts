@@ -85,6 +85,15 @@ export interface RequestCreatePayload {
   category_id: number;
   title: string;
   description: string;
+  assigned_to?: number | null;
+}
+
+export interface AssigneeOut {
+  id: number;
+  full_name: string;
+  role: { id: number; name: string; description: string | null };
+  faculty_id: number | null;
+  department_id: number | null;
 }
 
 export interface RequestAssignPayload {
@@ -110,6 +119,9 @@ export interface RequestListParams {
 
 export const requestsApi = api.injectEndpoints({
   endpoints: (build) => ({
+    listAssignees: build.query<AssigneeOut[], { faculty_id?: number } | void>({
+      query: (params) => ({ url: "/users/assignees", params: params || undefined }),
+    }),
     listRequests: build.query<RequestSummary[], RequestListParams | void>({
       query: (params) => ({ url: "/requests", params: params || undefined }),
       providesTags: (res) =>
@@ -186,6 +198,7 @@ export const requestsApi = api.injectEndpoints({
 });
 
 export const {
+  useListAssigneesQuery,
   useListRequestsQuery,
   useGetRequestQuery,
   useCreateRequestMutation,

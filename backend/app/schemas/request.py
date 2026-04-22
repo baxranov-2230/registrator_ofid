@@ -9,6 +9,7 @@ class RequestCreate(BaseModel):
     category_id: int
     title: str = Field(min_length=3, max_length=500)
     description: str = Field(min_length=3)
+    assigned_to: int | None = None
 
 
 class RequestAssign(BaseModel):

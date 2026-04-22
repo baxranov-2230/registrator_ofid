@@ -6,7 +6,7 @@ from sqlalchemy.orm import selectinload
 from app.core.db import get_db
 from app.core.security import get_current_user, hash_password, require_roles
 from app.models import Role, User
-from app.schemas.user import UserCreate, UserOut, UserUpdate
+from app.schemas.user import AssigneeOut, UserCreate, UserOut, UserUpdate
 from app.services.audit_service import log_action
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -15,6 +15,26 @@ router = APIRouter(prefix="/users", tags=["users"])
 @router.get("/me", response_model=UserOut)
 async def get_me(user: User = Depends(get_current_user)) -> UserOut:
     return UserOut.model_validate(user)
+
+
+@router.get("/assignees", response_model=list[AssigneeOut])
+async def list_assignees(
+    faculty_id: int | None = None,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(get_current_user),
+) -> list[AssigneeOut]:
+    stmt = (
+        select(User)
+        .options(selectinload(User.role))
+        .join(Role)
+        .where(Role.name.in_((Role.STAFF, Role.REGISTRATOR)))
+        .where(User.is_active.is_(True))
+    )
+    if faculty_id is not None:
+        stmt = stmt.where(User.faculty_id == faculty_id)
+    stmt = stmt.order_by(User.full_name.asc())
+    users = (await db.execute(stmt)).scalars().all()
+    return [AssigneeOut.model_validate(u) for u in users]
 
 
 @router.get("", response_model=list[UserOut], dependencies=[Depends(require_roles(Role.ADMIN))])

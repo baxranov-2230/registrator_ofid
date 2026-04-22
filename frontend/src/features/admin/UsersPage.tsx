@@ -42,6 +42,7 @@ import {
   useListUsersQuery,
   useUpdateUserMutation,
 } from "@/features/admin/adminApi";
+import { formatApiError } from "@/shared/api/errors";
 
 const ROLES = ["student", "registrator", "staff", "admin", "leadership"] as const;
 type RoleName = (typeof ROLES)[number];
@@ -399,8 +400,7 @@ function UserDialog({
       }
       onClose();
     } catch (e: unknown) {
-      const data = (e as { data?: { detail?: string } }).data;
-      setErr(data?.detail || t("common.error"));
+      setErr(formatApiError(e, t("common.error")));
     }
   };
 

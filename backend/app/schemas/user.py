@@ -39,6 +39,15 @@ class UserOut(BaseModel):
     payment_form: str | None = None
 
 
+class AssigneeOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    full_name: str
+    role: RoleOut
+    faculty_id: int | None = None
+    department_id: int | None = None
+
+
 class UserCreate(BaseModel):
     full_name: str = Field(min_length=2, max_length=255)
     email: EmailStr

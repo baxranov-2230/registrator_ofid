@@ -46,11 +46,25 @@ async def create_request(
     category_id: int,
     title: str,
     description: str,
+    assigned_to: int | None = None,
 ) -> Request:
     cat_stmt = select(RequestCategory).where(RequestCategory.id == category_id)
     category = (await db.execute(cat_stmt)).scalar_one_or_none()
     if not category or not category.is_active:
         raise HTTPException(status_code=400, detail="Invalid category")
+
+    assignee: User | None = None
+    if assigned_to is not None:
+        assignee_stmt = (
+            select(User).where(User.id == assigned_to).options(selectinload(User.role))
+        )
+        assignee = (await db.execute(assignee_stmt)).scalar_one_or_none()
+        if not assignee or not assignee.is_active:
+            raise HTTPException(status_code=400, detail="Invalid assignee")
+        if assignee.role and assignee.role.name not in (Role.STAFF, Role.REGISTRATOR):
+            raise HTTPException(
+                status_code=400, detail="Assignee must be staff or registrator"
+            )
 
     tracking_no = await generate_tracking_no(redis)
     sla_deadline = datetime.now(UTC) + timedelta(hours=category.sla_hours)
@@ -63,6 +77,7 @@ async def create_request(
         description=description.strip(),
         status=RequestStatus.NEW,
         priority=category.priority,
+        assigned_to=assignee.id if assignee else None,
         faculty_id=student.faculty_id,
         department_id=student.department_id,
         sla_deadline=sla_deadline,
@@ -76,7 +91,7 @@ async def create_request(
             changed_by=student.id,
             old_status=None,
             new_status=RequestStatus.NEW,
-            comment="Created",
+            comment=f"Created and assigned to {assignee.full_name}" if assignee else "Created",
         )
     )
     await db.flush()
