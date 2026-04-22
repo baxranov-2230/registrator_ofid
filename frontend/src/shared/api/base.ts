@@ -3,7 +3,7 @@ import { createApi, fetchBaseQuery, BaseQueryFn, FetchArgs, FetchBaseQueryError 
 import type { RootState } from "@/app/store";
 import { tokensReceived, loggedOut } from "@/features/auth/authSlice";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_URL = import.meta.env.VITE_API_URL || "";
 
 const rawBaseQuery = fetchBaseQuery({
   baseUrl: `${API_URL}/api/v1`,
