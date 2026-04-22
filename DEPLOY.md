@@ -6,28 +6,43 @@ ROYD (Registrator Ofis – Yagona Darcha Tizimi) platformasini serverga yoki lok
 
 ## 📋 Shartlar (Prerequisites)
 
-Quyidagi dasturlar o'rnatilgan bo'lishi kerak:
+Faqat bitta narsa kerak:
 
 ```bash
-docker --version         # >= 20.10
-docker compose version   # v2.x
-git --version            # ixtiyoriy (update uchun)
+git --version    # kodni olish uchun (ixtiyoriy)
 ```
 
-### Docker o'rnatish (Ubuntu/Debian)
+Docker va Nginx — `deploy.sh` skripti avtomatik o'rnatadi.
 
-Agar Docker yo'q bo'lsa:
+---
+
+## 🐳 Docker O'rnatish (Avtomatik)
+
+### Bitta buyruq bilan
+
+```bash
+./deploy.sh install-docker
+```
+
+Bu buyruq quyidagilarni bajaradi:
+- ✅ Docker CE o'rnatadi
+- ✅ Docker Compose plugin o'rnatadi
+- ✅ Foydalanuvchini `docker` guruhiga qo'shadi
+- ✅ Docker servisini avtomatik ishga tushirish uchun yoqadi
+
+O'rnatishdan keyin terminalni **qayta oching** yoki:
+
+```bash
+newgrp docker
+docker run hello-world   # tekshirish
+```
+
+### Qo'lda o'rnatish (ixtiyoriy)
 
 ```bash
 curl -fsSL https://get.docker.com | sudo sh
 sudo usermod -aG docker $USER
 newgrp docker
-```
-
-Tekshirish:
-
-```bash
-docker run hello-world
 ```
 
 ---
@@ -104,7 +119,8 @@ Talaba kirishi uchun — **haqiqiy HEMIS** ID va paroli (student.ndki.uz) ishlat
 | `./deploy.sh up` | Kontaynerlarni yoqish |
 | `./deploy.sh down` | To'xtatish |
 | `./deploy.sh restart` | Qayta ishga tushirish |
-| `./deploy.sh status` | Holat + URL'lar |
+| `./deploy.sh status` | Holat + URL'lar + IP manzillar |
+| `./deploy.sh ips` | Server IP manzillarini ko'rish |
 | `./deploy.sh logs` | Barcha log'lar (Ctrl+C bilan chiqish) |
 | `./deploy.sh logs backend` | Faqat bitta servis log'i |
 | `./deploy.sh migrate` | Alembic migratsiyalarni qo'llash |
@@ -173,6 +189,53 @@ Ko'p uchraydigan sabablar:
 ```bash
 ./deploy.sh clean
 ./deploy.sh init
+```
+
+---
+
+## 🌐 Nginx O'rnatish (Server uchun)
+
+Serverda platformaga tashqi IP orqali kirish imkonini berish uchun Nginx o'rnating.
+
+### Avtomatik o'rnatish
+
+```bash
+./deploy.sh setup-nginx
+```
+
+Bu buyruq:
+- ✅ Nginx o'rnatadi (agar yo'q bo'lsa)
+- ✅ Server IP manzilini **avtomatik** aniqlaydi (lokal + tashqi)
+- ✅ Nginx konfiguratsiyasini yozadi (frontend + API + WebSocket proxy)
+- ✅ Nginx servisini ishga tushiradi
+
+### Domen bilan ishlatish
+
+```bash
+./deploy.sh setup-nginx royd.ndki.uz
+```
+
+### O'rnatishdan keyin
+
+```bash
+./deploy.sh ips   # qaysi IP/domen orqali kirish mumkinligini ko'rish
+```
+
+Natija:
+```
+  Lokal IP(lar): 192.168.1.100
+  Tashqi IP:     85.121.45.67
+
+  Platforma manzillari:
+  🌐 http://192.168.1.100  (Nginx orqali)
+  🌍 http://85.121.45.67   (tashqi IP, Nginx orqali)
+```
+
+### HTTPS (TLS) qo'shish
+
+```bash
+sudo apt install certbot python3-certbot-nginx
+sudo certbot --nginx -d royd.ndki.uz
 ```
 
 ---
@@ -285,7 +348,7 @@ find $BACKUP_DIR -name "royd-*.sql.gz" -mtime +30 -delete
 
 ## 🆘 Eng Qisqa Boshlash
 
-Darhol ishlatish uchun:
+### Lokal (dev)
 
 ```bash
 ./deploy.sh init                                              # o'rnatish
@@ -294,6 +357,17 @@ Darhol ishlatish uchun:
 ```
 
 Brauzerda [http://localhost:5174](http://localhost:5174) ga kirib ishlab ko'ring.
+
+### Server (prod)
+
+```bash
+./deploy.sh install-docker    # Docker o'rnatish (bir marta)
+newgrp docker                  # yoki terminalni qayta oching
+./deploy.sh init               # platformani o'rnatish
+./deploy.sh setup-nginx        # Nginx + IP avtomatik sozlash
+./deploy.sh admin admin@royd.uz "StrongPass123!" "Super Admin"
+./deploy.sh ips                # qaysi URL orqali kirish mumkin
+```
 
 ---
 
