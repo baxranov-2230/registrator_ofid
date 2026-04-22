@@ -12,6 +12,11 @@ import GroupsPage from "@/features/admin/GroupsPage";
 import CategoriesPage from "@/features/admin/CategoriesPage";
 import AuditPage from "@/features/admin/AuditPage";
 import Placeholder from "@/features/common/Placeholder";
+import NewRequestPage from "@/features/requests/NewRequestPage";
+import MyRequestsPage from "@/features/requests/MyRequestsPage";
+import RequestDetailPage from "@/features/requests/RequestDetailPage";
+import RegistratorInboxPage from "@/features/requests/RegistratorInboxPage";
+import StaffQueuePage from "@/features/requests/StaffQueuePage";
 
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -28,23 +33,23 @@ export const router = createBrowserRouter([
           {
             element: <RequireAuth roles={["student"]} />,
             children: [
-              { path: "/student/requests", element: <Placeholder title="Mening murojaatlarim" /> },
-              { path: "/student/requests/new", element: <Placeholder title="Yangi murojaat" /> },
-              { path: "/student/requests/:id", element: <Placeholder title="Murojaat" /> },
+              { path: "/student/requests", element: <MyRequestsPage /> },
+              { path: "/student/requests/new", element: <NewRequestPage /> },
+              { path: "/student/requests/:id", element: <RequestDetailPage /> },
             ],
           },
           {
             element: <RequireAuth roles={["registrator", "admin"]} />,
             children: [
-              { path: "/registrator/inbox", element: <Placeholder title="Kiruvchi murojaatlar" /> },
-              { path: "/registrator/requests/:id", element: <Placeholder title="Murojaat" /> },
+              { path: "/registrator/inbox", element: <RegistratorInboxPage /> },
+              { path: "/registrator/requests/:id", element: <RequestDetailPage /> },
             ],
           },
           {
             element: <RequireAuth roles={["staff"]} />,
             children: [
-              { path: "/staff/queue", element: <Placeholder title="Ish navbatim" /> },
-              { path: "/staff/requests/:id", element: <Placeholder title="Murojaat" /> },
+              { path: "/staff/queue", element: <StaffQueuePage /> },
+              { path: "/staff/requests/:id", element: <RequestDetailPage /> },
             ],
           },
           {

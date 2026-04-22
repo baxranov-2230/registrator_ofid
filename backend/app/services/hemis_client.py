@@ -65,12 +65,25 @@ def _name(value) -> str | None:
 
 
 def _code_int(value) -> int | None:
-    """Extract integer code from HEMIS nested dict or scalar."""
-    raw = value.get("code") if isinstance(value, dict) else value
-    if raw is None:
+    """Extract integer code from HEMIS nested dict or scalar.
+
+    HEMIS returns level/semester as {"code": "12", "name": "2-kurs"}, where
+    `code` is a 2-digit internal id and `name` carries the real number.
+    Prefer `name` so "2-kurs" → 2, "4-semestr" → 4.
+    """
+    if isinstance(value, dict):
+        for raw in (value.get("name"), value.get("code")):
+            if raw is None:
+                continue
+            try:
+                return int(str(raw).strip().split("-")[0])
+            except (ValueError, AttributeError):
+                continue
+        return None
+    if value is None:
         return None
     try:
-        return int(str(raw).strip().split("-")[0])
+        return int(str(value).strip().split("-")[0])
     except (ValueError, AttributeError):
         return None
 
