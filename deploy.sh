@@ -127,161 +127,50 @@ get_server_ips() {
 # Nginx o'rnatish va sozlash
 # ─────────────────────────────────────────────
 cmd_setup_nginx() {
-  log "Nginx o'rnatish va sozlash boshlandi..."
+  log "Nginx docker container sifatida ishlaydi — alohida o'rnatish shart emas."
+  log "Server IP manzillari aniqlanmoqda..."
+  get_server_ips
 
-  if ! command -v apt-get >/dev/null 2>&1; then
-    err "Bu buyruq faqat Ubuntu/Debian tizimlarida ishlaydi"
-    exit 1
-  fi
-
-  # .env dan portlarni o'qish
   if [ -f .env ]; then
     set -a; . ./.env; set +a
   fi
 
-  FP=${FRONTEND_PORT:-5174}
-  BP=${BACKEND_PORT:-8001}
-
-  # Nginx o'rnatish
-  if ! command -v nginx >/dev/null 2>&1; then
-    log "Nginx o'rnatilmoqda..."
-    sudo apt-get update -qq
-    sudo apt-get install -y -qq nginx
-    ok "Nginx o'rnatildi"
-  else
-    ok "Nginx allaqachon o'rnatilgan: $(nginx -v 2>&1)"
-  fi
-
-  # IP manzillarni aniqlash
-  log "Server IP manzillari aniqlanmoqda..."
-  get_server_ips
-
-  echo ""
-  echo "  Lokal IP(lar): ${LOCAL_IPS:-topilmadi}"
-  echo "  Tashqi IP:     ${PUBLIC_IP:-topilmadi}"
-  echo ""
-
-  # Domen yoki IP tanlash
-  if [ -n "$2" ]; then
-    SERVER_NAME="$2"
-    log "Domen/IP: $SERVER_NAME (argument orqali)"
-  elif [ -n "$PUBLIC_IP" ]; then
-    SERVER_NAME="$PUBLIC_IP"
-    log "Tashqi IP ishlatiladi: $SERVER_NAME"
-  elif [ -n "$LOCAL_IPS" ]; then
-    # Birinchi lokal IP ni olish
-    SERVER_NAME=$(echo "$LOCAL_IPS" | awk '{print $1}')
-    log "Lokal IP ishlatiladi: $SERVER_NAME"
-  else
-    SERVER_NAME="localhost"
-    warn "IP topilmadi, 'localhost' ishlatiladi"
-  fi
-
-  # Nginx config yozish
-  NGINX_CONF="/etc/nginx/sites-available/royd"
-  log "Nginx konfiguratsiyasi yozilmoqda: $NGINX_CONF"
-
-  sudo tee "$NGINX_CONF" > /dev/null <<NGINXEOF
-# ROYD — Registrator Ofis platformasi
-# Avtomatik yaratilgan: $(date)
-# Server: $SERVER_NAME
-
-server {
-    listen 80;
-    server_name $SERVER_NAME;
-
-    # Fayl yuklash limiti
-    client_max_body_size 50M;
-
-    # Frontend (React SPA)
-    location / {
-        proxy_pass http://127.0.0.1:${FP};
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 60s;
-    }
-
-    # Backend API
-    location /api/ {
-        proxy_pass http://127.0.0.1:${BP};
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_read_timeout 120s;
-    }
-
-    # WebSocket
-    location /ws/ {
-        proxy_pass http://127.0.0.1:${BP};
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_read_timeout 3600s;
-    }
-
-    # Static fayllar keshi
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-        proxy_pass http://127.0.0.1:${FP};
-        proxy_set_header Host \$host;
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-}
-NGINXEOF
-
-  ok "Nginx config yozildi: $NGINX_CONF"
-
-  # sites-enabled symlink
-  if [ ! -e /etc/nginx/sites-enabled/royd ]; then
-    sudo ln -sf "$NGINX_CONF" /etc/nginx/sites-enabled/royd
-    ok "Symlink yaratildi: /etc/nginx/sites-enabled/royd"
-  fi
-
-  # default nginx config ni o'chirish (port 80 konflikt)
-  if [ -e /etc/nginx/sites-enabled/default ]; then
-    sudo rm -f /etc/nginx/sites-enabled/default
-    warn "Default nginx config o'chirildi (port 80 uchun)"
-  fi
-
-  # Nginx config tekshirish
-  log "Nginx konfiguratsiyasi tekshirilmoqda..."
-  if sudo nginx -t; then
-    ok "Nginx config to'g'ri"
-  else
-    err "Nginx config xato! Tekshiring: sudo nginx -t"
-    exit 1
-  fi
-
-  # Nginx qayta ishga tushirish
-  sudo systemctl enable nginx
-  sudo systemctl reload nginx
-  ok "Nginx qayta ishga tushirildi"
+  NP=${NGINX_PORT:-80}
 
   echo ""
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  ok "Nginx sozlandi!"
+  echo "  Lokal IP(lar): ${LOCAL_IPS:-topilmadi}"
+  echo "  Tashqi IP:     ${PUBLIC_IP:-topilmadi}"
   echo ""
-  echo "  Platforma manzillari:"
-  if [ -n "$LOCAL_IPS" ]; then
-    for ip in $LOCAL_IPS; do
+  echo "  Platforma port ${NP} dan ochiq:"
+  for ip in ${LOCAL_IPS:-localhost}; do
+    if [ "$NP" = "80" ]; then
       echo "  🌐 http://$ip"
-    done
+    else
+      echo "  🌐 http://$ip:${NP}"
+    fi
+  done
+  if [ -n "$PUBLIC_IP" ]; then
+    if [ "$NP" = "80" ]; then
+      echo "  🌍 http://$PUBLIC_IP  (tashqi)"
+    else
+      echo "  🌍 http://$PUBLIC_IP:${NP}  (tashqi)"
+    fi
   fi
-  [ -n "$PUBLIC_IP" ] && echo "  🌍 http://$PUBLIC_IP  (tashqi)"
-  echo "  🌐 http://$SERVER_NAME  (asosiy)"
   echo ""
-  echo "  TLS (HTTPS) qo'shish uchun:"
-  echo "  sudo apt install certbot python3-certbot-nginx"
-  echo "  sudo certbot --nginx -d your-domain.uz"
+
+  # Agar port 80 band bo'lsa, ogohlantirish
+  if ss -tlnp 2>/dev/null | grep -q ":${NP} " || \
+     netstat -tlnp 2>/dev/null | grep -q ":${NP} "; then
+    warn "Port ${NP} allaqachon band! .env da NGINX_PORT ni o'zgartiring"
+    warn "Masalan: NGINX_PORT=8080"
+  else
+    ok "Port ${NP} bo'sh — nginx ishga tushganda ochiladi"
+  fi
+
+  echo ""
+  echo "  Nginx konfiguratsiyasi: infra/nginx.conf"
+  echo "  Portni o'zgartirish:    .env ichida NGINX_PORT=8080"
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
@@ -292,28 +181,35 @@ cmd_ips() {
   log "Server IP manzillari aniqlanmoqda..."
   get_server_ips
 
-  echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-  echo "  Lokal IP(lar): ${LOCAL_IPS:-topilmadi}"
-  echo "  Tashqi IP:     ${PUBLIC_IP:-topilmadi}"
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-
   if [ -f .env ]; then
     set -a; . ./.env; set +a
   fi
 
-  FP=${FRONTEND_PORT:-5174}
+  NP=${NGINX_PORT:-80}
   BP=${BACKEND_PORT:-8001}
 
   echo ""
-  echo "  Platforma manzillari:"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "  Lokal IP(lar): ${LOCAL_IPS:-topilmadi}"
+  echo "  Tashqi IP:     ${PUBLIC_IP:-topilmadi}"
+  echo ""
+  echo "  Platforma manzillari (nginx port ${NP}):"
   for ip in ${LOCAL_IPS:-localhost}; do
-    echo "  🌐 http://$ip (Nginx orqali)"
-    echo "     Bevosita: http://$ip:$FP (frontend)"
-    echo "     Bevosita: http://$ip:$BP/api/docs (backend)"
+    if [ "$NP" = "80" ]; then
+      echo "  🌐 http://$ip"
+    else
+      echo "  🌐 http://$ip:${NP}"
+    fi
   done
-  [ -n "$PUBLIC_IP" ] && echo ""
-  [ -n "$PUBLIC_IP" ] && echo "  🌍 http://$PUBLIC_IP (tashqi IP, Nginx orqali)"
+  if [ -n "$PUBLIC_IP" ]; then
+    if [ "$NP" = "80" ]; then
+      echo "  🌍 http://$PUBLIC_IP  (tashqi)"
+    else
+      echo "  🌍 http://$PUBLIC_IP:${NP}  (tashqi)"
+    fi
+  fi
+  echo "  🔌 API docs: http://localhost:${BP}/api/docs"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   echo ""
 }
 
@@ -337,6 +233,7 @@ POSTGRES_PORT=5433
 
 REDIS_PORT=6380
 
+NGINX_PORT=80
 BACKEND_PORT=8001
 JWT_SECRET=$(generate_secret)
 
@@ -449,25 +346,41 @@ cmd_status() {
     set -a; . ./.env; set +a
   fi
 
-  FP=${FRONTEND_PORT:-5174}
+  NP=${NGINX_PORT:-80}
   BP=${BACKEND_PORT:-8001}
   MP=${MAILHOG_UI_PORT:-8025}
 
   # IP manzillarni olish (xato bo'lsa silent)
   get_server_ips 2>/dev/null || true
 
-  echo "🌐 Frontend:    http://localhost:${FP}"
-  echo "🔌 Backend API: http://localhost:${BP}/api/docs"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  if [ "$NP" = "80" ]; then
+    echo "🌐 Platforma:   http://localhost"
+  else
+    echo "🌐 Platforma:   http://localhost:${NP}"
+  fi
+  echo "🔌 Backend API: http://localhost:${BP}/api/docs  (to'g'ridan)"
   echo "📧 MailHog UI:  http://localhost:${MP}"
 
   if [ -n "$LOCAL_IPS" ] || [ -n "$PUBLIC_IP" ]; then
     echo ""
-    echo "  Tarmoqdan kirish:"
+    echo "  Tarmoqdan kirish (nginx port ${NP}):"
     for ip in ${LOCAL_IPS:-}; do
-      echo "  🌐 http://$ip:${FP}"
+      if [ "$NP" = "80" ]; then
+        echo "  🌐 http://$ip"
+      else
+        echo "  🌐 http://$ip:${NP}"
+      fi
     done
-    [ -n "$PUBLIC_IP" ] && echo "  🌍 http://$PUBLIC_IP:${FP}  (tashqi)"
+    if [ -n "$PUBLIC_IP" ]; then
+      if [ "$NP" = "80" ]; then
+        echo "  🌍 http://$PUBLIC_IP  (tashqi)"
+      else
+        echo "  🌍 http://$PUBLIC_IP:${NP}  (tashqi)"
+      fi
+    fi
   fi
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
 cmd_clean() {
