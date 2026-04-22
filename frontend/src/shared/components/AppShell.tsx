@@ -23,6 +23,7 @@ import PersonIcon from "@mui/icons-material/PersonOutline";
 import type { RootState } from "@/app/store";
 import { loggedOut } from "@/features/auth/authSlice";
 import { useLogoutMutation } from "@/features/auth/authApi";
+import { api } from "@/shared/api/base";
 import Sidebar, { SIDEBAR_WIDTH } from "@/shared/components/Sidebar";
 
 export default function AppShell() {
@@ -46,6 +47,7 @@ export default function AppShell() {
       }
     }
     dispatch(loggedOut());
+    dispatch(api.util.resetApiState());
     navigate("/login");
   };
 

@@ -37,9 +37,11 @@ const baseQueryWithRefresh: BaseQueryFn<string | FetchArgs, unknown, FetchBaseQu
         result = await rawBaseQuery(args, apiCtx, extraOptions);
       } else {
         apiCtx.dispatch(loggedOut());
+        apiCtx.dispatch(api.util.resetApiState());
       }
     } else {
       apiCtx.dispatch(loggedOut());
+      apiCtx.dispatch(api.util.resetApiState());
     }
   }
   return result;
