@@ -1,0 +1,80 @@
+{
+  "app": {
+    "name": "ROYD – Registrator Ofis",
+    "tagline": "Yagona darcha tizimi"
+  },
+  "auth": {
+    "login": "Kirish",
+    "logout": "Chiqish",
+    "email": "Elektron pochta",
+    "password": "Parol",
+    "studentLogin": "Talaba kirishi",
+    "staffLogin": "Xodim kirishi",
+    "hemisId": "Talaba ID (HEMIS)",
+    "submit": "Kirish",
+    "loginFailed": "Kirishda xato",
+    "welcome": "Xush kelibsiz"
+  },
+  "nav": {
+    "dashboard": "Asosiy",
+    "myRequests": "Mening murojaatlarim",
+    "newRequest": "Yangi murojaat",
+    "inbox": "Kiruvchi murojaatlar",
+    "queue": "Ish navbatim",
+    "users": "Foydalanuvchilar",
+    "categories": "Turlar",
+    "faculties": "Fakultetlar",
+    "audit": "Audit jurnali",
+    "notifications": "Bildirishnomalar",
+    "profile": "Profil"
+  },
+  "requests": {
+    "status": {
+      "new": "Yangi",
+      "accepted": "Qabul qilindi",
+      "in_progress": "Jarayonda",
+      "completed": "Bajarildi",
+      "rejected": "Rad etildi",
+      "returned": "Qaytarildi"
+    },
+    "priority": {
+      "low": "Past",
+      "normal": "Oddiy",
+      "high": "Yuqori",
+      "critical": "Kritik"
+    },
+    "trackingNo": "Tracking raqam",
+    "title": "Mavzu",
+    "description": "Tavsif",
+    "category": "Turi",
+    "createdAt": "Yaratildi",
+    "slaDeadline": "SLA muddati",
+    "assignee": "Mas'ul xodim",
+    "submit": "Yuborish",
+    "assign": "Biriktirish",
+    "accept": "Qabul qilish",
+    "startWork": "Ishga kirishish",
+    "complete": "Bajarildi",
+    "reject": "Rad etish",
+    "return": "Qaytarish",
+    "addMessage": "Xabar qo'shish",
+    "addFile": "Fayl biriktirish",
+    "noRequests": "Murojaatlar mavjud emas"
+  },
+  "common": {
+    "loading": "Yuklanmoqda...",
+    "save": "Saqlash",
+    "cancel": "Bekor qilish",
+    "delete": "O'chirish",
+    "edit": "Tahrirlash",
+    "search": "Qidirish",
+    "filter": "Filtr",
+    "back": "Ortga",
+    "next": "Keyingi",
+    "confirm": "Tasdiqlash",
+    "yes": "Ha",
+    "no": "Yo'q",
+    "error": "Xato",
+    "success": "Muvaffaqiyatli"
+  }
+}
