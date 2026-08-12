@@ -1,0 +1,140 @@
+# Production stack.
+#
+# The development compose (docker-compose.yml) was previously used for server
+# deployments too, which meant production ran with ENV=dev, uvicorn --reload,
+# the Vite dev server, MailHog, wildcard CORS and database ports published to
+# the host (E-01). This file is the deployable counterpart:
+#
+#   - ENV=production, so the settings validator refuses dev secrets (B-03)
+#   - multiple uvicorn workers, no autoreload
+#   - frontend served as a static build by nginx (E-04)
+#   - no source bind mounts, no MailHog
+#   - Postgres and Redis reachable only on the internal network
+#   - real SMTP, explicit CORS origins, TLS at the edge
+#
+# Usage: ./deploy.sh --prod up   (or: docker compose -f docker-compose.prod.yml)
+# Required in .env.prod: SERVER_NAME, JWT_SECRET, POSTGRES_PASSWORD, SMTP_*
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: royd_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+      POSTGRES_DB: ${POSTGRES_DB:?required}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [royd_network]
+    restart: always
+    # No `ports:` — the database is not exposed outside the compose network.
+
+  redis:
+    image: redis:7-alpine
+    container_name: royd_redis
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [royd_network]
+    restart: always
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../infra/backend.Dockerfile
+    container_name: royd_backend
+    environment:
+      ENV: production
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-4}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:?required - must be a 32+ char random string}
+      HEMIS_USE_MOCK: "false"
+      HEMIS_BASE_URL: ${HEMIS_BASE_URL:-https://student.ndki.uz}
+      SMTP_HOST: ${SMTP_HOST:?required}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-noreply@royd.uz}
+      SMTP_TLS: "true"
+      STORAGE_DIR: /app/storage/uploads
+      # Explicit origins: "*" plus credentials lets any site call the API (B-04).
+      CORS_ORIGINS: https://${SERVER_NAME:?required}
+    volumes:
+      - backend-storage:/app/storage
+    depends_on:
+      postgres: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    command: ["/app/entrypoint.sh"]
+    networks: [royd_network]
+    restart: always
+
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        # Same origin: nginx routes /api to the backend.
+        VITE_API_URL: ""
+    container_name: royd_frontend
+    depends_on:
+      backend: {condition: service_healthy}
+    networks: [royd_network]
+    restart: always
+
+  nginx:
+    image: nginx:alpine
+    container_name: royd_nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SERVER_NAME: ${SERVER_NAME:?required}
+    volumes:
+      - ./nginx.prod.conf:/etc/nginx/templates/nginx.conf.template:ro
+      - ./proxy_common.conf:/etc/nginx/proxy_common.conf:ro
+      - certbot-conf:/etc/letsencrypt:ro
+      - certbot-www:/var/www/certbot:ro
+    # The official image only templates conf.d; the main config is rendered here.
+    command: >
+      /bin/sh -c "envsubst '$$SERVER_NAME' < /etc/nginx/templates/nginx.conf.template
+      > /etc/nginx/nginx.conf && nginx -g 'daemon off;'"
+    depends_on: [backend, frontend]
+    networks: [royd_network]
+    restart: always
+
+  certbot:
+    image: certbot/certbot
+    container_name: royd_certbot
+    volumes:
+      - certbot-conf:/etc/letsencrypt
+      - certbot-www:/var/www/certbot
+    # Renewal check twice a day, as Let's Encrypt recommends.
+    entrypoint: >
+      /bin/sh -c "trap exit TERM;
+      while :; do certbot renew --webroot -w /var/www/certbot --quiet;
+      sleep 12h & wait $${!}; done"
+    networks: [royd_network]
+    restart: always
+
+volumes:
+  postgres-data:
+  redis-data:
+  backend-storage:
+  certbot-conf:
+  certbot-www:
+
+networks:
+  royd_network:
+    driver: bridge

@@ -31,22 +31,14 @@ import { API_URL } from "@/shared/api/base";
 import {
   useAddMessageMutation,
   useGetRequestQuery,
-  useTransitionRequestMutation,
   useUploadRequestFileMutation,
   type RequestStatus,
 } from "@/features/requests/requestsApi";
 import { PRIORITY_COLOR, STATUS_COLOR } from "@/features/requests/statusMeta";
 import AssignDialog from "@/features/requests/AssignDialog";
+import RequestActions from "@/features/requests/RequestActions";
+import RequestProgress from "@/features/requests/RequestProgress";
 import { formatApiError } from "@/shared/api/errors";
-
-const TRANSITIONS_BY_STATUS: Record<RequestStatus, RequestStatus[]> = {
-  new: ["accepted", "rejected", "returned"],
-  accepted: ["in_progress", "rejected", "returned"],
-  in_progress: ["completed", "rejected", "returned"],
-  returned: ["accepted", "new"],
-  completed: [],
-  rejected: [],
-};
 
 export default function RequestDetailPage() {
   const { t } = useTranslation();
@@ -60,24 +52,25 @@ export default function RequestDetailPage() {
     skip: !requestId,
   });
   const [addMessage, msgState] = useAddMessageMutation();
-  const [transition, transitionState] = useTransitionRequestMutation();
   const [uploadFile, uploadState] = useUploadRequestFileMutation();
 
   const [message, setMessage] = useState("");
   const [isInternal, setIsInternal] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
-  const [transitionTarget, setTransitionTarget] = useState<RequestStatus | "">("");
-  const [transitionComment, setTransitionComment] = useState("");
   const [actionErr, setActionErr] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const allowedTransitions = useMemo(
-    () => (data ? TRANSITIONS_BY_STATUS[data.status] : []),
-    [data],
-  );
-
   const canTransition = role === "staff" || role === "registrator" || role === "admin";
   const canAssign = role === "registrator" || role === "admin";
+
+  /** Newest history comment — explains a return or rejection to the student. */
+  const lastComment = useMemo(() => {
+    if (!data?.history?.length) return null;
+    for (let i = data.history.length - 1; i >= 0; i -= 1) {
+      if (data.history[i].comment) return data.history[i].comment;
+    }
+    return null;
+  }, [data]);
 
   const accessToken = useSelector((s: RootState) => s.auth.accessToken);
 
@@ -93,24 +86,6 @@ export default function RequestDetailPage() {
       }).unwrap();
       setMessage("");
       setIsInternal(false);
-    } catch (e: unknown) {
-      setActionErr(formatApiError(e, t("common.error")));
-    }
-  };
-
-  const handleTransition = async () => {
-    if (!transitionTarget) return;
-    setActionErr(null);
-    try {
-      await transition({
-        id: requestId,
-        data: {
-          status: transitionTarget as RequestStatus,
-          comment: transitionComment.trim() || null,
-        },
-      }).unwrap();
-      setTransitionTarget("");
-      setTransitionComment("");
     } catch (e: unknown) {
       setActionErr(formatApiError(e, t("common.error")));
     }
@@ -153,7 +128,7 @@ export default function RequestDetailPage() {
   }
 
   return (
-    <Box sx={{ maxWidth: 1100, mx: "auto" }}>
+    <Box sx={{ width: "100%" }}>
       <Stack direction="row" alignItems="center" spacing={1} mb={2}>
         <IconButton onClick={() => navigate(-1)} size="small">
           <ArrowBackIcon />
@@ -189,8 +164,10 @@ export default function RequestDetailPage() {
                 <Typography variant="body2" color="text.secondary">
                   {data.tracking_no}
                 </Typography>
+                {/* Show the full path the student picked: type → service. */}
                 <Typography variant="body2" color="text.secondary">
-                  · {data.category?.name}
+                  {data.service_type ? `· ${data.service_type.name} → ` : "· "}
+                  {data.category?.name}
                 </Typography>
               </Stack>
               <Typography variant="h5" fontWeight={700} mb={1}>
@@ -223,51 +200,39 @@ export default function RequestDetailPage() {
             </Box>
           </Stack>
 
+          <Divider sx={{ my: 3 }} />
+
+          {/* Everyone sees where the request stands, including the student. */}
+          <RequestProgress status={data.status} lastComment={lastComment} />
+
+          {role === "student" && !["completed", "rejected", "returned"].includes(data.status) && (
+            <Alert severity="info" sx={{ mt: 2 }} icon={false}>
+              <Typography variant="caption" fontWeight={700} display="block">
+                {t("requests.whatNext")}
+              </Typography>
+              {t("requests.whatNextStudent")}
+            </Alert>
+          )}
+
           {(canAssign || canTransition) && (
             <>
               <Divider sx={{ my: 3 }} />
-              <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap" useFlexGap>
+              <Stack
+                direction={{ xs: "column", md: "row" }}
+                spacing={2}
+                alignItems={{ md: "flex-start" }}
+                justifyContent="space-between"
+              >
+                {canTransition && <RequestActions request={data} role={role} />}
                 {canAssign && (
                   <Button
                     variant="outlined"
                     startIcon={<PersonAddIcon />}
                     onClick={() => setAssignOpen(true)}
+                    sx={{ flexShrink: 0 }}
                   >
                     {data.assigned_to ? t("requests.assign") : t("requests.assignTitle")}
                   </Button>
-                )}
-                {canTransition && allowedTransitions.length > 0 && (
-                  <>
-                    <TextField
-                      select
-                      size="small"
-                      label={t("requests.status.new")}
-                      value={transitionTarget}
-                      onChange={(e) => setTransitionTarget(e.target.value as RequestStatus)}
-                      sx={{ minWidth: 200 }}
-                    >
-                      <MenuItem value="">—</MenuItem>
-                      {allowedTransitions.map((s) => (
-                        <MenuItem key={s} value={s}>
-                          {t(`requests.status.${s}`)}
-                        </MenuItem>
-                      ))}
-                    </TextField>
-                    <TextField
-                      size="small"
-                      label={t("requests.transitionComment")}
-                      value={transitionComment}
-                      onChange={(e) => setTransitionComment(e.target.value)}
-                      sx={{ flexGrow: 1, minWidth: 200 }}
-                    />
-                    <Button
-                      variant="contained"
-                      onClick={handleTransition}
-                      disabled={!transitionTarget || transitionState.isLoading}
-                    >
-                      {t("common.confirm")}
-                    </Button>
-                  </>
                 )}
               </Stack>
               {actionErr && (
@@ -315,12 +280,25 @@ export default function RequestDetailPage() {
                     >
                       <Stack direction="row" spacing={1} alignItems="center" mb={0.5}>
                         <Avatar sx={{ width: 24, height: 24, fontSize: 12 }}>
-                          {String(m.sender_id)[0]}
+                          {(mine ? t("requests.you") : m.sender_name || "?")
+                            .trim()
+                            .charAt(0)
+                            .toUpperCase()}
                         </Avatar>
-                        <Typography variant="caption" sx={{ opacity: 0.85 }}>
-                          {new Date(m.created_at).toLocaleString()}
-                          {m.is_internal && ` · ${t("requests.internalNote")}`}
+                        <Typography variant="caption" fontWeight={700} sx={{ opacity: 0.95 }}>
+                          {mine ? t("requests.you") : m.sender_name || t("requests.unknownUser")}
+                          {m.sender_role && !mine && ` · ${t(`role.${m.sender_role}`)}`}
                         </Typography>
+                        <Typography variant="caption" sx={{ opacity: 0.75 }}>
+                          {new Date(m.created_at).toLocaleString()}
+                        </Typography>
+                        {m.is_internal && (
+                          <Chip
+                            label={t("requests.internalBadge")}
+                            size="small"
+                            sx={{ height: 18, fontSize: 10, fontWeight: 700 }}
+                          />
+                        )}
                       </Stack>
                       <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
                         {m.content}
@@ -350,16 +328,22 @@ export default function RequestDetailPage() {
                     {t("requests.send")}
                   </Button>
                 </Stack>
+                {/* Staff can post either to the student or to colleagues only,
+                    so the selector has to say which one is in effect. */}
                 {role !== "student" && (
                   <TextField
                     select
                     size="small"
+                    label={t("requests.messageTypeLabel")}
                     value={isInternal ? "1" : "0"}
                     onChange={(e) => setIsInternal(e.target.value === "1")}
-                    sx={{ mt: 1, minWidth: 240 }}
+                    sx={{ mt: 1.5, minWidth: 260 }}
+                    helperText={
+                      isInternal ? t("requests.internalOnly") : t("requests.publicMessage")
+                    }
                   >
-                    <MenuItem value="0">{t("requests.messagesTitle")}</MenuItem>
-                    <MenuItem value="1">{t("requests.internalNote")}</MenuItem>
+                    <MenuItem value="0">{t("requests.publicMessage")}</MenuItem>
+                    <MenuItem value="1">{t("requests.internalOnly")}</MenuItem>
                   </TextField>
                 )}
               </form>
@@ -474,7 +458,14 @@ export default function RequestDetailPage() {
                         {h.comment}
                       </Typography>
                     )}
-                    <Typography variant="caption" color="text.disabled">
+                    <Typography variant="caption" color="text.disabled" display="block">
+                      {h.changed_by_name && (
+                        <>
+                          {h.changed_by_name}
+                          {h.changed_by_role && ` · ${t(`role.${h.changed_by_role}`)}`}
+                          {" — "}
+                        </>
+                      )}
                       {new Date(h.created_at).toLocaleString()}
                     </Typography>
                   </Box>

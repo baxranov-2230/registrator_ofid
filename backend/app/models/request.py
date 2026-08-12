@@ -1,6 +1,15 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Index, String, Text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -78,7 +87,10 @@ class RequestHistory(Base):
     new_status: Mapped[str] = mapped_column(String(32), nullable=False)
     comment: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.utcnow(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
     )
 
     request: Mapped["Request"] = relationship(back_populates="history")
@@ -98,7 +110,10 @@ class RequestFile(Base):
     file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
     mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.utcnow(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
     )
 
     request: Mapped["Request"] = relationship(back_populates="files")
@@ -116,7 +131,10 @@ class Message(Base):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     is_internal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.utcnow(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
     )
 
     request: Mapped["Request"] = relationship(back_populates="messages")

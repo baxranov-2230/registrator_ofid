@@ -16,7 +16,11 @@ class HemisTokenRequest(BaseModel):
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    # Optional: the refresh token normally arrives in the httpOnly cookie, and
+    # the browser posts an empty body. Requiring it here made a page reload
+    # fail with 422 before the cookie was ever consulted. Non-browser clients
+    # may still send it explicitly.
+    refresh_token: str | None = None
 
 
 class TokenPair(BaseModel):

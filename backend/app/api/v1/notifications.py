@@ -39,9 +39,7 @@ async def mark_read(
 ) -> NotificationOut:
     notif = (
         await db.execute(
-            select(Notification).where(
-                Notification.id == notif_id, Notification.user_id == user.id
-            )
+            select(Notification).where(Notification.id == notif_id, Notification.user_id == user.id)
         )
     ).scalar_one_or_none()
     if not notif:

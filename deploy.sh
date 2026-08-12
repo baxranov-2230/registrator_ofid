@@ -1,13 +1,29 @@
 #!/usr/bin/env bash
 # ROYD platformasi — deploy skripti
-# Foydalanish: ./deploy.sh [init|up|down|restart|update|migrate|seed|logs|status|clean|install-docker|setup-nginx]
+# Foydalanish: ./deploy.sh [--prod|--dev] <buyruq>
+# Buyruqlar: init|up|down|restart|update|migrate|seed|logs|status|backup|restore|clean|install-docker|setup-nginx
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-COMPOSE="docker compose -f infra/docker-compose.yml --env-file .env"
+# Development is the default. `--prod` (or ROYD_ENV=prod) switches to the
+# production stack: built frontend, multi-worker backend, TLS, no MailHog and
+# no exposed database ports. Previously both used the same dev compose (E-01).
+MODE="${ROYD_ENV:-dev}"
+if [ "${1:-}" = "--prod" ]; then MODE="prod"; shift; fi
+if [ "${1:-}" = "--dev" ]; then MODE="dev"; shift; fi
+
+if [ "$MODE" = "prod" ]; then
+  COMPOSE_FILE="infra/docker-compose.prod.yml"
+  ENV_FILE=".env.prod"
+else
+  COMPOSE_FILE="infra/docker-compose.yml"
+  ENV_FILE=".env"
+fi
+COMPOSE="docker compose -f $COMPOSE_FILE --env-file $ENV_FILE"
+BACKUP_DIR="${ROYD_BACKUP_DIR:-$SCRIPT_DIR/backups}"
 
 # Ranglar
 RED='\033[0;31m'
@@ -321,13 +337,13 @@ cmd_update() {
 
 cmd_migrate() {
   log "Migratsiyalar qo'llanilmoqda..."
-  $COMPOSE exec -T backend .venv/bin/alembic upgrade head
+  $COMPOSE exec -T backend /opt/venv/bin/alembic upgrade head
   ok "Migratsiyalar bajarildi"
 }
 
 cmd_seed() {
   log "Boshlang'ich ma'lumotlar qo'shilmoqda..."
-  $COMPOSE exec -T backend .venv/bin/python -m app.seed
+  $COMPOSE exec -T backend /opt/venv/bin/python -m app.seed
   ok "Seed tugadi"
 }
 
@@ -383,8 +399,59 @@ cmd_status() {
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
+# ─────────────────────────────────────────────
+# Zaxira nusxa (E-06)
+# ─────────────────────────────────────────────
+cmd_backup() {
+  mkdir -p "$BACKUP_DIR"
+  STAMP="$(date +%Y%m%d-%H%M%S)"
+  DB_FILE="$BACKUP_DIR/royd-db-$STAMP.sql.gz"
+  FILES_FILE="$BACKUP_DIR/royd-files-$STAMP.tar.gz"
+
+  # shellcheck disable=SC1090
+  PGUSER="$(grep -E '^POSTGRES_USER=' "$ENV_FILE" | cut -d= -f2-)"
+  PGDB="$(grep -E '^POSTGRES_DB=' "$ENV_FILE" | cut -d= -f2-)"
+  PGUSER="${PGUSER:-royd}"
+  PGDB="${PGDB:-royd}"
+
+  log "Baza zaxiralanmoqda → $DB_FILE"
+  $COMPOSE exec -T postgres pg_dump -U "$PGUSER" -d "$PGDB" --clean --if-exists \
+    | gzip > "$DB_FILE"
+
+  log "Yuklangan fayllar zaxiralanmoqda → $FILES_FILE"
+  $COMPOSE exec -T backend tar -czf - -C /app/storage uploads > "$FILES_FILE" 2>/dev/null \
+    || warn "Fayl zaxirasi o'tkazib yuborildi (storage bo'sh bo'lishi mumkin)"
+
+  ok "Zaxira tayyor:"
+  ls -lh "$DB_FILE" "$FILES_FILE" 2>/dev/null || true
+
+  # Keep the last 14 database dumps so the disk cannot fill silently.
+  find "$BACKUP_DIR" -name 'royd-db-*.sql.gz' -type f | sort -r | tail -n +15 | xargs -r rm --
+  find "$BACKUP_DIR" -name 'royd-files-*.tar.gz' -type f | sort -r | tail -n +15 | xargs -r rm --
+}
+
+cmd_restore() {
+  DUMP="${1:-}"
+  if [ -z "$DUMP" ] || [ ! -f "$DUMP" ]; then
+    err "Foydalanish: ./deploy.sh restore <backups/royd-db-YYYYmmdd-HHMMSS.sql.gz>"
+    ls -1 "$BACKUP_DIR"/royd-db-*.sql.gz 2>/dev/null | tail -5 || true
+    exit 1
+  fi
+
+  warn "Bu joriy bazani '$DUMP' bilan ALMASHTIRADI."
+  read -r -p "Davom etasizmi? (y/N): " CONFIRM
+  [ "$CONFIRM" = "y" ] || [ "$CONFIRM" = "Y" ] || { log "Bekor qilindi"; exit 0; }
+
+  PGUSER="$(grep -E '^POSTGRES_USER=' "$ENV_FILE" | cut -d= -f2-)"; PGUSER="${PGUSER:-royd}"
+  PGDB="$(grep -E '^POSTGRES_DB=' "$ENV_FILE" | cut -d= -f2-)"; PGDB="${PGDB:-royd}"
+
+  gunzip -c "$DUMP" | $COMPOSE exec -T postgres psql -U "$PGUSER" -d "$PGDB"
+  ok "Tiklandi. Migratsiyalarni tekshiring: ./deploy.sh migrate"
+}
+
 cmd_clean() {
   warn "Barcha DB va volume'lar o'chiriladi!"
+  warn "Avval zaxira olishni tavsiya qilamiz: ./deploy.sh backup"
   read -p "Davom etasizmi? (y/N): " CONFIRM
   if [ "$CONFIRM" = "y" ] || [ "$CONFIRM" = "Y" ]; then
     $COMPOSE down -v
@@ -402,7 +469,7 @@ cmd_admin() {
   EMAIL="$2"; PASSWORD="$3"; NAME="${4:-Administrator}"
 
   log "Admin yaratilmoqda: $EMAIL"
-  $COMPOSE exec -T backend sh -c "PYTHONPATH=/app .venv/bin/python -c \"
+  $COMPOSE exec -T backend sh -c "PYTHONPATH=/app /opt/venv/bin/python -c \"
 import asyncio
 from sqlalchemy import select
 from app.core.db import SessionLocal
@@ -458,8 +525,16 @@ Boshqaruv:
   admin <email> <parol> [ism]
                     Admin foydalanuvchi yaratish/yangilash
 
+Zaxira:
+  backup            Baza + fayllar zaxirasi (backups/ katalogiga)
+  restore <fayl>    Bazani zaxiradan tiklash
+
 Xavfli:
   clean             Hamma narsani o'chirish (DB, volume'lar)
+
+Rejim:
+  --prod            Production stack (infra/docker-compose.prod.yml + .env.prod)
+  --dev             Development stack (default)
 
 Misollar:
   ./deploy.sh install-docker
@@ -486,6 +561,8 @@ case "${1:-help}" in
   seed)            cmd_seed ;;
   logs)            shift; cmd_logs "$@" ;;
   status|ps)       cmd_status ;;
+  backup)          cmd_backup ;;
+  restore)         shift; cmd_restore "$@" ;;
   clean)           cmd_clean ;;
   admin)           cmd_admin "$@" ;;
   help|--help|-h|"") usage ;;

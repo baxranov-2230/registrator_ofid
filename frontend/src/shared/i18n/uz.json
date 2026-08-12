@@ -1,7 +1,8 @@
 {
   "app": {
     "name": "ROYD – Registrator Ofis",
-    "tagline": "Yagona darcha tizimi"
+    "tagline": "Yagona darcha tizimi",
+    "sidebarSubtitle": "Registrator ofis\nYagona darcha tamoyili"
   },
   "auth": {
     "login": "Kirish",
@@ -13,7 +14,17 @@
     "hemisId": "Talaba ID (HEMIS)",
     "submit": "Kirish",
     "loginFailed": "Kirishda xato",
-    "welcome": "Xush kelibsiz"
+    "welcome": "Xush kelibsiz",
+    "welcomeHint": "Davom etish uchun hisobingizga kiring",
+    "submitting": "Kirilmoqda...",
+    "showPassword": "Parolni ko'rsatish",
+    "hidePassword": "Parolni yashirish",
+    "heroTitle": "Murojaatlaringiz — bitta darchada",
+    "heroSubtitle": "Registrator ofisga murojaat yuboring, holatini kuzating va xodim bilan bevosita bog'laning.",
+    "featureFast": "Murojaat bir necha daqiqada yuboriladi",
+    "featureTrack": "Har bir bosqichni real vaqtda kuzating",
+    "featureChat": "Mas'ul xodim bilan to'g'ridan-to'g'ri yozishing",
+    "footerNote": "Namangan davlat konchilik-texnologiya universiteti"
   },
   "nav": {
     "menu": "Menyu",
@@ -30,7 +41,13 @@
     "audit": "Audit jurnali",
     "analytics": "Analitika",
     "notifications": "Bildirishnomalar",
-    "profile": "Profil"
+    "profile": "Profil",
+    "openMenu": "Menyuni ochish",
+    "collapseMenu": "Menyuni yig'ish",
+    "expandMenu": "Menyuni kengaytirish",
+    "more": "Yana",
+    "staffUsers": "Xodimlar",
+    "studentUsers": "Talabalar"
   },
   "role": {
     "student": "Talaba",
@@ -58,8 +75,19 @@
       "slaRisk": "SLA xavfi",
       "totalUsers": "Foydalanuvchilar",
       "activeRequests": "Faol murojaatlar",
-      "slaBreaches": "SLA buzilishi"
-    }
+      "slaBreaches": "SLA buzilishi",
+      "dueSoon": "Muddati yaqin: {{count}}",
+      "unassigned": "Biriktirilmagan: {{count}}",
+      "avgResolution": "O'rtacha bajarish vaqti",
+      "slaCompliance": "SLA bajarilishi",
+      "createdThisWeek": "Shu haftada yaratilgan",
+      "hours": "{{count}} soat",
+      "dueSoonLabel": "Muddati yaqin"
+    },
+    "statsError": "Statistikani yuklab bo'lmadi",
+    "heroSubtitle": "ROYD – Registrator ofis yagona darcha tamoyili orqali barcha xizmatlar bir joyda.",
+    "serviceCatalog": "Xizmatlar katalogi",
+    "performance": "Samaradorlik"
   },
   "requests": {
     "status": {
@@ -97,9 +125,6 @@
     "newSubtitle": "Muammoingizni tavsiflang — tegishli xodimga yo'naltiriladi",
     "titlePlaceholder": "Masalan: Transkript olish",
     "descriptionPlaceholder": "Murojaatingizni batafsil yozing...",
-    "assigneeHint": "Istasangiz to'g'ridan-to'g'ri xodimni tanlang — aks holda registrator tomonidan yo'naltiriladi",
-    "autoRoute": "Avtomatik (registrator yo'naltiradi)",
-    "categoryRequired": "Murojaat turini tanlang",
     "titleRequired": "Mavzuni kiriting",
     "descriptionRequired": "Tavsifni kiriting",
     "submitted": "Murojaatingiz yuborildi",
@@ -117,7 +142,6 @@
     "allStatuses": "Barcha holatlar",
     "onlyUnassigned": "Faqat biriktirilmagan",
     "assignTitle": "Xodimga biriktirish",
-    "assignee": "Mas'ul xodim",
     "selectAssignee": "Xodimni tanlang",
     "assignComment": "Izoh (ixtiyoriy)",
     "transitionComment": "Izoh (ixtiyoriy)",
@@ -137,7 +161,59 @@
     "notAssignedYet": "Hali biriktirilmagan",
     "unknownUser": "Noma'lum",
     "youSent": "Siz yubordingiz",
-    "from": "Kimdan"
+    "from": "Kimdan",
+    "statusLabel": "Holati",
+    "overdue": "Muddati o'tgan",
+    "onlyOverdue": "Faqat muddati o'tgan",
+    "progressTitle": "Murojaat bosqichi",
+    "progressStep": "{{current}}-bosqich / {{total}}",
+    "stepNew": "Yuborildi",
+    "stepAccepted": "Qabul qilindi",
+    "stepInProgress": "Ko'rib chiqilmoqda",
+    "stepCompleted": "Yakunlandi",
+    "stepNewHint": "Murojaatingiz registratorga tushdi",
+    "stepAcceptedHint": "Registrator qabul qildi va xodimga biriktirdi",
+    "stepInProgressHint": "Mas'ul xodim ish olib bormoqda",
+    "stepCompletedHint": "Javob berildi",
+    "returnedBanner": "Murojaat sizga qaytarildi — quyidagi izohga qarab to'ldiring va qayta yuboring",
+    "rejectedBanner": "Murojaat rad etildi. Sabab quyidagi izohda ko'rsatilgan",
+    "completedBanner": "Murojaat yakunlandi",
+    "actionsTitle": "Amallar",
+    "actionsHint": "Murojaatni keyingi bosqichga o'tkazing",
+    "noActions": "Bu murojaat yopilgan — amallar mavjud emas",
+    "commentRequired": "Bu amal uchun izoh yozish shart",
+    "commentFor": "{{action}} — izoh",
+    "confirmAction": "{{action}}ni tasdiqlaysizmi?",
+    "messageTypeLabel": "Xabar turi",
+    "publicMessage": "Talabaga ko'rinadi",
+    "internalOnly": "Faqat xodimlar ko'radi",
+    "internalBadge": "Ichki",
+    "you": "Siz",
+    "unassignedOnly": "Biriktirilmaganlar",
+    "overdueOnly": "Muddati o'tganlar",
+    "filterExtra": "Qo'shimcha filtr",
+    "filterAll": "Barchasi",
+    "slaLeft": "{{time}} qoldi",
+    "slaOver": "{{time}} kechikdi",
+    "assignedToYou": "Sizga biriktirilgan",
+    "whatNext": "Keyingi qadam",
+    "whatNextStudent": "Xodim ko'rib chiqmoqda — javob kelganda bildirishnoma olasiz",
+    "autoRouteNotice": "Murojaatingiz fakultetingizga biriktirilgan Registrator ofis xodimiga avtomatik yuboriladi.",
+    "submittedRouted": "Murojaatingiz {{name}} ga yuborildi.",
+    "serviceType": "Xizmat turi",
+    "service": "Xizmat",
+    "serviceTypeHint": "Avval xizmat turini tanlang",
+    "serviceCount": "{{count}} ta xizmat",
+    "serviceTypeRequired": "Xizmat turini tanlang",
+    "serviceRequired": "Xizmatni tanlang",
+    "detailsStep": "Murojaat ma'lumotlari",
+    "detailsStepHint": "Muammoingizni qisqa va aniq yozing",
+    "titleHint": "Qisqa sarlavha — masalan: Transkript olish",
+    "descriptionHint": "Holatni batafsil tushuntiring",
+    "submitting": "Yuborilmoqda...",
+    "submittedShort": "Murojaatingiz qabul qilindi va tegishli xodimga yuborildi.",
+    "serviceSearchPlaceholder": "Xizmatni qidirish...",
+    "serviceNoMatch": "Xizmat topilmadi"
   },
   "common": {
     "loading": "Yuklanmoqda...",
@@ -154,7 +230,15 @@
     "no": "Yo'q",
     "error": "Xato",
     "success": "Muvaffaqiyatli",
-    "viewAll": "Hammasini ko'rish"
+    "viewAll": "Hammasini ko'rish",
+    "rowsPerPage": "Sahifadagi qatorlar:",
+    "close": "Yopish",
+    "deactivate": "Nofaol qilish",
+    "activate": "Faollashtirish",
+    "saved": "Saqlandi",
+    "actions": "Amallar",
+    "copy": "Nusxalash",
+    "copied": "Nusxalandi"
   },
   "users": {
     "subtitle": "Platformadagi barcha foydalanuvchilarni boshqarish",
@@ -172,7 +256,11 @@
       "role": "Rol",
       "contact": "Aloqa",
       "active": "Faol",
-      "actions": "Amallar"
+      "actions": "Amallar",
+      "faculty": "Fakultet",
+      "studentId": "Talaba ID",
+      "group": "Guruh",
+      "level": "Kurs"
     },
     "form": {
       "fullName": "F.I.Sh.",
@@ -184,7 +272,19 @@
       "role": "Rol",
       "faculty": "Fakultet",
       "active": "Faol"
-    }
+    },
+    "staffTitle": "Xodimlar",
+    "staffSubtitle": "Registrator ofis xodimlari va ma'murlar",
+    "newStaff": "Yangi xodim",
+    "searchStaffPlaceholder": "Ism yoki email bo'yicha qidirish...",
+    "studentsTitle": "Talabalar",
+    "studentsSubtitle": "HEMIS orqali ro'yxatdan o'tgan talabalar",
+    "studentsHemisNote": "Talaba ma'lumotlari HEMIS tizimidan avtomatik olinadi va har safar kirganda yangilanadi. Shu sababli ular bu yerda tahrirlanmaydi.",
+    "searchStudentPlaceholder": "Ism, ID yoki guruh bo'yicha qidirish...",
+    "totalStudents": "Jami talabalar",
+    "activeStudents": "Faol talabalar",
+    "noFaculty": "Biriktirilmagan",
+    "unboundFaculties": "Quyidagi fakultetlarga Registrator ofis xodimi biriktirilmagan: {{names}}. Bu fakultet talabalari murojaat yubora olmaydi."
   },
   "faculties": {
     "subtitle": "Fakultet va kafedralarni boshqarish",
@@ -198,7 +298,10 @@
       "code": "Kod",
       "codeHint": "Qisqa kod, masalan: IT, EC",
       "email": "Aloqa email"
-    }
+    },
+    "editFaculty": "Fakultetni tahrirlash",
+    "deactivateConfirm": "'{{name}}' fakultetini nofaol qilasizmi?",
+    "inactive": "Nofaol"
   },
   "groups": {
     "title": "Talaba guruhlari",
@@ -228,7 +331,10 @@
       "name": "Nomi",
       "slaHours": "SLA (soat)",
       "priority": "Ustuvorlik"
-    }
+    },
+    "editCategory": "Turni tahrirlash",
+    "deactivateConfirm": "'{{name}}' turini nofaol qilasizmi? Eski murojaatlar saqlanib qoladi.",
+    "inactive": "Nofaol"
   },
   "audit": {
     "subtitle": "Tizimdagi barcha amallarning jurnali",
@@ -264,5 +370,18 @@
     "educationType": "Ta'lim turi",
     "educationLang": "Ta'lim tili",
     "paymentForm": "To'lov shakli"
+  },
+  "notifications": {
+    "subtitle": "{{count}} ta o'qilmagan bildirishnoma",
+    "all": "Hammasi",
+    "unread": "O'qilmagan",
+    "markAllRead": "Hammasini o'qilgan deb belgilash",
+    "empty": "Bildirishnomalar yo'q"
+  },
+  "time": {
+    "justNow": "Hozirgina",
+    "minutesAgo": "{{count}} daqiqa oldin",
+    "hoursAgo": "{{count}} soat oldin",
+    "daysAgo": "{{count}} kun oldin"
   }
 }

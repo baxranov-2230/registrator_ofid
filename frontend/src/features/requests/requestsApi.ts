@@ -1,5 +1,4 @@
 import { api } from "@/shared/api/base";
-import type { CategoryNode } from "@/features/admin/adminApi";
 
 export type RequestStatus =
   | "new"
@@ -25,6 +24,14 @@ export interface RequestCategoryOut {
   icon: string | null;
 }
 
+/** Envelope returned by every paginated list endpoint (C-06). */
+export interface Page<T> {
+  items: T[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface RequestSummary {
   id: number;
   tracking_no: string;
@@ -39,6 +46,9 @@ export interface RequestSummary {
   sla_deadline: string;
   created_at: string;
   updated_at: string;
+  closed_at: string | null;
+  /** Computed server-side: open and past its SLA deadline. */
+  is_overdue: boolean;
 }
 
 export interface RequestHistoryOut {
@@ -49,6 +59,9 @@ export interface RequestHistoryOut {
   new_status: string;
   comment: string | null;
   created_at: string;
+  /** Resolved server-side so the timeline can name the actor, not their id. */
+  changed_by_name: string | null;
+  changed_by_role: string | null;
 }
 
 export interface RequestFileOut {
@@ -68,12 +81,16 @@ export interface MessageOut {
   content: string;
   is_internal: boolean;
   created_at: string;
+  /** Resolved server-side so the thread shows who wrote each message. */
+  sender_name: string | null;
+  sender_role: string | null;
 }
 
 export interface RequestDetail extends RequestSummary {
   description: string;
-  closed_at: string | null;
   category: RequestCategoryOut;
+  /** Parent type of `category`, for showing "Xizmat turi → Xizmat". */
+  service_type: RequestCategoryOut | null;
   student: UserMini;
   assignee: UserMini | null;
   history: RequestHistoryOut[];
@@ -81,11 +98,17 @@ export interface RequestDetail extends RequestSummary {
   messages: MessageOut[];
 }
 
+/**
+ * No `assigned_to`: the handler is chosen server-side from the student's
+ * faculty, so the student never picks a registrator.
+ */
 export interface RequestCreatePayload {
+  /** The chosen leaf service. */
   category_id: number;
+  /** Its service type — cross-checked server-side against the service. */
+  service_type_id?: number;
   title: string;
   description: string;
-  assigned_to?: number | null;
 }
 
 export interface AssigneeOut {
@@ -112,6 +135,10 @@ export interface RequestListParams {
   status?: RequestStatus;
   faculty_id?: number;
   category_id?: number;
+  assigned_to?: number;
+  /** Only requests with no owner yet — the registrator's triage queue. */
+  unassigned?: boolean;
+  overdue?: boolean;
   search?: string;
   limit?: number;
   offset?: number;
@@ -122,12 +149,12 @@ export const requestsApi = api.injectEndpoints({
     listAssignees: build.query<AssigneeOut[], { faculty_id?: number } | void>({
       query: (params) => ({ url: "/users/assignees", params: params || undefined }),
     }),
-    listRequests: build.query<RequestSummary[], RequestListParams | void>({
+    listRequests: build.query<Page<RequestSummary>, RequestListParams | void>({
       query: (params) => ({ url: "/requests", params: params || undefined }),
       providesTags: (res) =>
         res
           ? [
-              ...res.map((r) => ({ type: "Request" as const, id: r.id })),
+              ...res.items.map((r) => ({ type: "Request" as const, id: r.id })),
               { type: "Request" as const, id: "LIST" },
             ]
           : [{ type: "Request" as const, id: "LIST" }],
@@ -138,7 +165,10 @@ export const requestsApi = api.injectEndpoints({
     }),
     createRequest: build.mutation<RequestDetail, RequestCreatePayload>({
       query: (body) => ({ url: "/requests", method: "POST", body }),
-      invalidatesTags: [{ type: "Request", id: "LIST" }],
+      invalidatesTags: [
+        { type: "Request", id: "LIST" },
+        { type: "Stats", id: "DASHBOARD" },
+      ],
     }),
     assignRequest: build.mutation<
       RequestDetail,
@@ -152,6 +182,7 @@ export const requestsApi = api.injectEndpoints({
       invalidatesTags: (_r, _e, { id }) => [
         { type: "Request", id },
         { type: "Request", id: "LIST" },
+        { type: "Stats", id: "DASHBOARD" },
       ],
     }),
     transitionRequest: build.mutation<
@@ -166,6 +197,7 @@ export const requestsApi = api.injectEndpoints({
       invalidatesTags: (_r, _e, { id }) => [
         { type: "Request", id },
         { type: "Request", id: "LIST" },
+        { type: "Stats", id: "DASHBOARD" },
       ],
     }),
     addMessage: build.mutation<
@@ -207,19 +239,3 @@ export const {
   useAddMessageMutation,
   useUploadRequestFileMutation,
 } = requestsApi;
-
-export function flattenCategories(
-  nodes: CategoryNode[],
-  level = 0,
-): Array<{ id: number; name: string; priority: string; sla_hours: number; level: number }> {
-  const out: Array<{ id: number; name: string; priority: string; sla_hours: number; level: number }> = [];
-  for (const n of nodes) {
-    if (n.is_active) {
-      out.push({ id: n.id, name: n.name, priority: n.priority, sla_hours: n.sla_hours, level });
-    }
-    if (n.children?.length) {
-      out.push(...flattenCategories(n.children, level + 1));
-    }
-  }
-  return out;
-}

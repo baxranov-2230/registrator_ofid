@@ -56,7 +56,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-royd}:${POSTGRES_PASSWORD:-royd_dev_pw}@royd_postgres:5432/${POSTGRES_DB:-royd}
       REDIS_URL: redis://royd_redis:6379/0
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-to-32-chars-pls}
-      HEMIS_USE_MOCK: "false"
+      HEMIS_USE_MOCK: "${HEMIS_USE_MOCK:-false}"
       HEMIS_BASE_URL: "https://student.ndki.uz"
       HEMIS_LOGIN_PATH: "/rest/v1/auth/login"
       HEMIS_ME_PATH: "/rest/v1/account/me"
@@ -78,6 +78,12 @@ services:
       mailhog:
         condition: service_started
     command: ["/app/entrypoint.sh"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).status==200 else 1)"]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 5
     networks:
       - royd_network
     restart: unless-stopped
@@ -109,8 +115,10 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
     depends_on:
-      - backend
-      - frontend
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
     networks:
       - royd_network
     restart: unless-stopped

@@ -28,11 +28,14 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           ws: true,
         },
-        "/hemis": {
+        // Only the login endpoint, matching what nginx exposes in production.
+        // Proxying the whole /hemis prefix turned the dev server into an open
+        // proxy for the entire HEMIS API (B-09).
+        "^/hemis/auth/login$": {
           target: "https://student.ndki.uz",
           changeOrigin: true,
           secure: true,
-          rewrite: (path) => path.replace(/^\/hemis/, "/rest/v1"),
+          rewrite: () => "/rest/v1/auth/login",
         },
       },
     },

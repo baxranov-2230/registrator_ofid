@@ -1,10 +1,9 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base
+from app.models.base import Base, JSONVariant
 from app.models.user import User
 
 
@@ -35,9 +34,12 @@ class Notification(Base):
         String(32), default=NotificationChannel.IN_APP, nullable=False
     )
     is_read: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
-    payload: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    payload: Mapped[dict] = mapped_column(JSONVariant, default=dict, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=lambda: datetime.utcnow(), nullable=False
+        DateTime(timezone=True),
+        default=lambda: datetime.now(UTC),
+        server_default=func.now(),
+        nullable=False,
     )
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 

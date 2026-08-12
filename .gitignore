@@ -1,5 +1,8 @@
-# Claude Code
-.claude/
+# Claude Code — skills are shared with the team, local settings are not
+.claude/*
+!.claude/skills/
+!.claude/settings.json
+.claude/settings.local.json
 
 # Python
 __pycache__/
@@ -27,6 +30,8 @@ coverage.xml
 # Node
 node_modules/
 dist/
+*.tsbuildinfo
+.vite-types/
 build/
 .vite/
 *.log
@@ -43,6 +48,7 @@ pnpm-debug.log*
 .DS_Store
 
 # Project runtime
+backups/
 storage/uploads/
 logs/
 *.db

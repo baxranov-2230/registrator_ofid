@@ -1,3 +1,5 @@
+from datetime import UTC
+
 import httpx
 
 from app.core.config import settings
@@ -34,16 +36,14 @@ async def hemis_fetch_me(hemis_token: str) -> dict:
     me_url = f"{base}{settings.hemis_me_path}"
     async with httpx.AsyncClient(timeout=15.0) as client:
         try:
-            resp = await client.get(
-                me_url, headers={"Authorization": f"Bearer {hemis_token}"}
-            )
+            resp = await client.get(me_url, headers={"Authorization": f"Bearer {hemis_token}"})
         except httpx.HTTPError as exc:
             raise HemisError(f"HEMIS /me xatosi: {exc}") from exc
 
         try:
             payload = resp.json()
         except ValueError:
-            raise HemisError(f"HEMIS /me noto'g'ri javob: {resp.status_code}")
+            raise HemisError(f"HEMIS /me noto'g'ri javob: {resp.status_code}") from None
 
     if resp.status_code == 401 or payload.get("success") is False:
         err = payload.get("error") if isinstance(payload, dict) else None
@@ -104,9 +104,7 @@ def _hemis_ref(value) -> dict | None:
 
 def _normalize_profile(data: dict) -> dict:
     semester_obj = data.get("semester") if isinstance(data.get("semester"), dict) else None
-    edu_year = (
-        _name(semester_obj.get("education_year")) if semester_obj else None
-    )
+    edu_year = _name(semester_obj.get("education_year")) if semester_obj else None
     return {
         "student_id_number": data.get("student_id_number"),
         "full_name": data.get("full_name", ""),
@@ -143,17 +141,30 @@ def _mock_login(username: str, password: str) -> dict:
     return {
         "student_id_number": username,
         "full_name": f"Talaba {username}",
-        "email": None, "phone": None, "birth_date": None, "gender": None,
-        "address": None, "image_path": None,
-        "faculty": None, "department": None, "specialty": None, "group": None,
-        "education_year": None, "level": None, "semester": None,
-        "student_status": None, "education_form": None, "education_type": None,
-        "education_lang": None, "payment_form": None,
+        "email": None,
+        "phone": None,
+        "birth_date": None,
+        "gender": None,
+        "address": None,
+        "image_path": None,
+        "faculty": None,
+        "department": None,
+        "specialty": None,
+        "group": None,
+        "education_year": None,
+        "level": None,
+        "semester": None,
+        "student_status": None,
+        "education_form": None,
+        "education_type": None,
+        "education_lang": None,
+        "payment_form": None,
     }
 
 
 def _mock_to_profile(user: dict) -> dict:
     """Convert the flat mock fixture into the unified normalized profile shape."""
+
     def ref(name: str | None) -> dict | None:
         return {"hemis_id": None, "code": None, "name": name} if name else None
 
@@ -196,7 +207,7 @@ async def _real_login(username: str, password: str) -> dict:
         try:
             payload = resp.json()
         except ValueError:
-            raise HemisError(f"HEMIS noto'g'ri javob: {resp.status_code}")
+            raise HemisError(f"HEMIS noto'g'ri javob: {resp.status_code}") from None
 
         hemis_error = (payload.get("error") if isinstance(payload, dict) else None) or None
 
@@ -205,7 +216,11 @@ async def _real_login(username: str, password: str) -> dict:
         if resp.status_code >= 400:
             raise HemisError(hemis_error or f"HEMIS xatoligi: {resp.status_code}")
 
-        hemis_token = (payload.get("data") or {}).get("token") if isinstance(payload.get("data"), dict) else None
+        hemis_token = (
+            (payload.get("data") or {}).get("token")
+            if isinstance(payload.get("data"), dict)
+            else None
+        )
         if not hemis_token:
             raise HemisError("HEMIS token qaytarmadi")
 
@@ -221,7 +236,7 @@ async def _real_login(username: str, password: str) -> dict:
         try:
             me_payload = me_resp.json()
         except ValueError:
-            raise HemisError(f"HEMIS /me noto'g'ri javob: {me_resp.status_code}")
+            raise HemisError(f"HEMIS /me noto'g'ri javob: {me_resp.status_code}") from None
 
         if me_resp.status_code >= 400 or me_payload.get("success") is False:
             err = me_payload.get("error") if isinstance(me_payload, dict) else None
@@ -239,9 +254,10 @@ def _ts_to_date(value: int | str | None) -> str | None:
     if value is None:
         return None
     if isinstance(value, int):
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         try:
-            return datetime.fromtimestamp(value, tz=timezone.utc).strftime("%Y-%m-%d")
+            return datetime.fromtimestamp(value, tz=UTC).strftime("%Y-%m-%d")
         except (OSError, OverflowError):
             return None
     return str(value)

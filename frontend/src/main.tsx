@@ -7,6 +7,7 @@ import { ThemeProvider, CssBaseline } from "@mui/material";
 import { store } from "@/app/store";
 import { router } from "@/app/router";
 import { theme } from "@/app/theme";
+import AuthProvider from "@/app/AuthProvider";
 import "@/app/i18n";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -14,7 +15,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <Provider store={store}>
       <ThemeProvider theme={theme}>
         <CssBaseline />
-        <RouterProvider router={router} />
+        <AuthProvider>
+          <RouterProvider router={router} />
+        </AuthProvider>
       </ThemeProvider>
     </Provider>
   </React.StrictMode>,

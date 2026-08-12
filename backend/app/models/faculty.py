@@ -1,12 +1,12 @@
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String
+from sqlalchemy import Boolean, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
-    from app.models.user import User
+    from app.models.profile import Employee, Student
 
 
 class Faculty(Base, TimestampMixin):
@@ -25,8 +25,11 @@ class Faculty(Base, TimestampMixin):
     departments: Mapped[list["Department"]] = relationship(
         back_populates="faculty", cascade="all, delete-orphan"
     )
-    users: Mapped[list["User"]] = relationship(
-        back_populates="faculty", foreign_keys="User.faculty_id"
+    students: Mapped[list["Student"]] = relationship(
+        foreign_keys="Student.faculty_id", viewonly=True
+    )
+    employees: Mapped[list["Employee"]] = relationship(
+        foreign_keys="Employee.faculty_id", viewonly=True
     )
     groups: Mapped[list["StudentGroup"]] = relationship(
         back_populates="faculty", cascade="all, delete-orphan"
@@ -47,8 +50,8 @@ class Department(Base, TimestampMixin):
     )
 
     faculty: Mapped["Faculty"] = relationship(back_populates="departments")
-    users: Mapped[list["User"]] = relationship(
-        back_populates="department", foreign_keys="User.department_id"
+    employees: Mapped[list["Employee"]] = relationship(
+        foreign_keys="Employee.department_id", viewonly=True
     )
 
 
@@ -66,6 +69,6 @@ class StudentGroup(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     faculty: Mapped["Faculty | None"] = relationship(back_populates="groups")
-    users: Mapped[list["User"]] = relationship(
-        back_populates="student_group", foreign_keys="User.student_group_id"
+    students: Mapped[list["Student"]] = relationship(
+        foreign_keys="Student.student_group_id", viewonly=True
     )

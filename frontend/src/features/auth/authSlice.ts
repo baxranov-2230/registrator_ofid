@@ -1,5 +1,13 @@
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 
+import {
+  clearTokens,
+  getAccessToken,
+  hasSessionHint,
+  setAccessToken,
+  setSessionHint,
+} from "@/features/auth/tokenStorage";
+
 export interface AuthUser {
   id: number;
   full_name: string;
@@ -27,43 +35,59 @@ export interface AuthUser {
   payment_form: string | null;
 }
 
+/**
+ * "restoring" is the state that fixes the reload bug.
+ *
+ * The access token is memory-only, so every fresh load starts with none. The
+ * old code read that as "logged out" and redirected to /login before anything
+ * could try the refresh token. Booting into "restoring" instead makes the
+ * guard wait for the silent refresh to resolve.
+ */
+export type AuthStatus = "restoring" | "authenticated" | "anonymous";
+
 interface AuthState {
   accessToken: string | null;
-  refreshToken: string | null;
   user: AuthUser | null;
+  status: AuthStatus;
 }
 
-const ACCESS_KEY = "royd_access";
-const REFRESH_KEY = "royd_refresh";
-
 const initialState: AuthState = {
-  accessToken: localStorage.getItem(ACCESS_KEY),
-  refreshToken: localStorage.getItem(REFRESH_KEY),
+  accessToken: getAccessToken(),
   user: null,
+  // Only attempt a restore if this browser ever had a session; otherwise go
+  // straight to the login page with no wasted round-trip or spinner flash.
+  status: hasSessionHint() ? "restoring" : "anonymous",
 };
 
 const authSlice = createSlice({
   name: "auth",
   initialState,
   reducers: {
-    tokensReceived(state, action: PayloadAction<{ access: string; refresh: string }>) {
+    tokensReceived(state, action: PayloadAction<{ access: string }>) {
       state.accessToken = action.payload.access;
-      state.refreshToken = action.payload.refresh;
-      localStorage.setItem(ACCESS_KEY, action.payload.access);
-      localStorage.setItem(REFRESH_KEY, action.payload.refresh);
+      state.status = "authenticated";
+      setAccessToken(action.payload.access);
+      setSessionHint(true);
     },
     userLoaded(state, action: PayloadAction<AuthUser>) {
       state.user = action.payload;
+      state.status = "authenticated";
+    },
+    /** Restore finished with no usable session — but this is not a logout. */
+    restoreFailed(state) {
+      state.accessToken = null;
+      state.user = null;
+      state.status = "anonymous";
+      clearTokens();
     },
     loggedOut(state) {
       state.accessToken = null;
-      state.refreshToken = null;
       state.user = null;
-      localStorage.removeItem(ACCESS_KEY);
-      localStorage.removeItem(REFRESH_KEY);
+      state.status = "anonymous";
+      clearTokens();
     },
   },
 });
 
-export const { tokensReceived, userLoaded, loggedOut } = authSlice.actions;
+export const { tokensReceived, userLoaded, restoreFailed, loggedOut } = authSlice.actions;
 export default authSlice.reducer;

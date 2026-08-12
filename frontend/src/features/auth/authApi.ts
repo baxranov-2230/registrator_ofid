@@ -22,8 +22,10 @@ export const authApi = api.injectEndpoints({
       query: () => "/auth/me",
       providesTags: ["User"],
     }),
-    logout: build.mutation<void, { refresh_token: string }>({
-      query: (body) => ({ url: "/auth/logout", method: "POST", body }),
+    // The refresh token is read from the httpOnly cookie server-side, so the
+    // client has nothing to send.
+    logout: build.mutation<void, void>({
+      query: () => ({ url: "/auth/logout", method: "POST", body: {} }),
     }),
   }),
 });

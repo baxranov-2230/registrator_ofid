@@ -10,7 +10,7 @@ export default function RegistratorInboxPage() {
       subtitle={t("requests.inboxSubtitle")}
       detailBasePath="/registrator/requests"
       showAssignee
-      unassignedFilter
+      triageFilters
     />
   );
 }

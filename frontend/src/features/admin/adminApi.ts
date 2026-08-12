@@ -1,10 +1,13 @@
 import { api } from "@/shared/api/base";
 import type { AuthUser } from "@/features/auth/authSlice";
 
+export type Priority = "low" | "normal" | "high" | "critical";
+
 export interface FacultyOut {
   id: number;
   name: string;
   code: string;
+  hemis_id: string | null;
   contact_email: string | null;
   is_active: boolean;
 }
@@ -31,7 +34,7 @@ export interface CategoryNode {
   parent_id: number | null;
   name: string;
   sla_hours: number;
-  priority: "low" | "normal" | "high" | "critical";
+  priority: Priority;
   is_active: boolean;
   icon: string | null;
   children: CategoryNode[];
@@ -81,8 +84,31 @@ export interface CategoryCreatePayload {
   parent_id?: number | null;
   name: string;
   sla_hours: number;
-  priority: "low" | "normal" | "high" | "critical";
+  priority: Priority;
   icon?: string | null;
+}
+
+export interface CategoryUpdatePayload {
+  name?: string;
+  sla_hours?: number;
+  priority?: Priority;
+  icon?: string | null;
+  is_active?: boolean;
+}
+
+export interface FacultyUpdatePayload {
+  name?: string;
+  code?: string;
+  contact_email?: string | null;
+  is_active?: boolean;
+}
+
+export interface GroupUpdatePayload {
+  name?: string;
+  faculty_id?: number | null;
+  specialty?: string | null;
+  education_year?: string | null;
+  is_active?: boolean;
 }
 
 export const adminApi = api.injectEndpoints({
@@ -118,12 +144,22 @@ export const adminApi = api.injectEndpoints({
     }),
 
     // Faculties
-    listFaculties: build.query<FacultyOut[], void>({
-      query: () => "/faculties",
+    listFaculties: build.query<FacultyOut[], { include_inactive?: boolean } | void>({
+      // Admin screens pass `include_inactive` so that users still bound to a
+      // retired faculty show its name instead of a bare id.
+      query: (params) => ({ url: "/faculties", params: params || undefined }),
       providesTags: [{ type: "Faculty", id: "LIST" }],
     }),
     createFaculty: build.mutation<FacultyOut, FacultyCreatePayload>({
       query: (body) => ({ url: "/admin/faculties", method: "POST", body }),
+      invalidatesTags: [{ type: "Faculty", id: "LIST" }],
+    }),
+    updateFaculty: build.mutation<FacultyOut, { id: number; data: FacultyUpdatePayload }>({
+      query: ({ id, data }) => ({ url: `/admin/faculties/${id}`, method: "PATCH", body: data }),
+      invalidatesTags: [{ type: "Faculty", id: "LIST" }],
+    }),
+    deactivateFaculty: build.mutation<void, number>({
+      query: (id) => ({ url: `/admin/faculties/${id}`, method: "DELETE" }),
       invalidatesTags: [{ type: "Faculty", id: "LIST" }],
     }),
 
@@ -143,7 +179,11 @@ export const adminApi = api.injectEndpoints({
     // Student groups
     listGroups: build.query<StudentGroupOut[], { faculty_id?: number } | void>({
       query: (params) => ({ url: "/groups", params: params || undefined }),
-      providesTags: [{ type: "Department", id: "GROUPS" }],
+      providesTags: [{ type: "Group", id: "LIST" }],
+    }),
+    updateGroup: build.mutation<StudentGroupOut, { id: number; data: GroupUpdatePayload }>({
+      query: ({ id, data }) => ({ url: `/admin/groups/${id}`, method: "PATCH", body: data }),
+      invalidatesTags: [{ type: "Group", id: "LIST" }],
     }),
 
     // Categories
@@ -153,6 +193,14 @@ export const adminApi = api.injectEndpoints({
     }),
     createCategory: build.mutation<CategoryNode, CategoryCreatePayload>({
       query: (body) => ({ url: "/admin/categories", method: "POST", body }),
+      invalidatesTags: [{ type: "Category", id: "LIST" }],
+    }),
+    updateCategory: build.mutation<CategoryNode, { id: number; data: CategoryUpdatePayload }>({
+      query: ({ id, data }) => ({ url: `/admin/categories/${id}`, method: "PATCH", body: data }),
+      invalidatesTags: [{ type: "Category", id: "LIST" }],
+    }),
+    deactivateCategory: build.mutation<void, number>({
+      query: (id) => ({ url: `/admin/categories/${id}`, method: "DELETE" }),
       invalidatesTags: [{ type: "Category", id: "LIST" }],
     }),
 
@@ -180,10 +228,15 @@ export const {
   useDeleteUserMutation,
   useListFacultiesQuery,
   useCreateFacultyMutation,
+  useUpdateFacultyMutation,
+  useDeactivateFacultyMutation,
   useListDepartmentsQuery,
   useCreateDepartmentMutation,
   useListGroupsQuery,
+  useUpdateGroupMutation,
   useListCategoriesQuery,
   useCreateCategoryMutation,
+  useUpdateCategoryMutation,
+  useDeactivateCategoryMutation,
   useListAuditQuery,
 } = adminApi;

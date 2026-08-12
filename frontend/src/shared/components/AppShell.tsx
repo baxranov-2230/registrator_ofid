@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { useTranslation } from "react-i18next";
@@ -12,11 +12,14 @@ import {
   ListItemIcon,
   Menu,
   MenuItem,
-  Stack,
   Toolbar,
+  Tooltip,
   Typography,
+  useMediaQuery,
 } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import NotificationsIcon from "@mui/icons-material/NotificationsNoneOutlined";
+import MenuIcon from "@mui/icons-material/Menu";
 import LogoutIcon from "@mui/icons-material/Logout";
 import PersonIcon from "@mui/icons-material/PersonOutline";
 
@@ -24,27 +27,62 @@ import type { RootState } from "@/app/store";
 import { loggedOut } from "@/features/auth/authSlice";
 import { useLogoutMutation } from "@/features/auth/authApi";
 import { api } from "@/shared/api/base";
-import Sidebar, { SIDEBAR_WIDTH } from "@/shared/components/Sidebar";
+import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
+import Sidebar, {
+  SIDEBAR_COLLAPSED_WIDTH,
+  SIDEBAR_WIDTH,
+} from "@/shared/components/Sidebar";
+import BottomNav from "@/shared/components/BottomNav";
+import { useListNotificationsQuery } from "@/features/notifications/notificationsApi";
+import { useNotificationSocket } from "@/features/notifications/useNotificationSocket";
+
+const COLLAPSE_KEY = "royd_sidebar_collapsed";
 
 export default function AppShell() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const user = useSelector((s: RootState) => s.auth.user);
-  const refreshToken = useSelector((s: RootState) => s.auth.refreshToken);
   const [logoutApi] = useLogoutMutation();
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+
+  const theme = useTheme();
+  // Below `md` the sidebar cannot coexist with the content: at 320px a fixed
+  // 260px rail would leave 60px for the page.
+  const isMobile = useMediaQuery(theme.breakpoints.down("md"));
+  const [mobileOpen, setMobileOpen] = useState(false);
+  // Remembered so the choice survives navigation and reloads.
+  const [collapsed, setCollapsed] = useState(
+    () => localStorage.getItem(COLLAPSE_KEY) === "1",
+  );
+
+  useEffect(() => {
+    localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
+  }, [collapsed]);
+
+  // Leaving mobile with the overlay open would otherwise strand a backdrop
+  // over the desktop layout.
+  useEffect(() => {
+    if (!isMobile) setMobileOpen(false);
+  }, [isMobile]);
+
+  // Live push, plus a poll as a fallback if the socket cannot connect.
+  useNotificationSocket();
+  const { data: notifications = [] } = useListNotificationsQuery(
+    { unread_only: true, limit: 50 },
+    { pollingInterval: 120_000 },
+  );
+  const unreadCount = notifications.length;
 
   const role = user?.role.name || "student";
 
   const handleLogout = async () => {
     setMenuAnchor(null);
-    if (refreshToken) {
-      try {
-        await logoutApi({ refresh_token: refreshToken }).unwrap();
-      } catch {
-        /* ignore */
-      }
+    try {
+      // Revokes the refresh token and clears the cookie server-side.
+      await logoutApi().unwrap();
+    } catch {
+      /* ignore — the local session is cleared either way */
     }
     dispatch(loggedOut());
     dispatch(api.util.resetApiState());
@@ -60,26 +98,80 @@ export default function AppShell() {
 
   return (
     <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "background.default" }}>
-      <Sidebar role={role} />
+      <Sidebar
+        role={role}
+        isMobile={isMobile}
+        collapsed={collapsed}
+        mobileOpen={mobileOpen}
+        onCloseMobile={() => setMobileOpen(false)}
+        onLogout={handleLogout}
+      />
 
-      <Box sx={{ flexGrow: 1, display: "flex", flexDirection: "column", width: `calc(100% - ${SIDEBAR_WIDTH}px)` }}>
+      <Box
+        sx={{
+          flexGrow: 1,
+          display: "flex",
+          flexDirection: "column",
+          // On mobile the drawer floats, so the content owns the full width.
+          // `minWidth: 0` lets children shrink instead of forcing a page-wide
+          // horizontal scrollbar.
+          width: {
+            xs: "100%",
+            md: `calc(100% - ${collapsed ? SIDEBAR_COLLAPSED_WIDTH : SIDEBAR_WIDTH}px)`,
+          },
+          minWidth: 0,
+        }}
+      >
         <AppBar position="sticky">
-          <Toolbar sx={{ gap: 2 }}>
-            <Box sx={{ flexGrow: 1 }}>
-              <Typography variant="h6" fontWeight={700}>
+          <Toolbar sx={{ gap: { xs: 1, sm: 2 } }}>
+            {/* One control in one place: on mobile it opens the overlay, on
+                desktop it collapses the sidebar to the icon rail. */}
+            <Tooltip
+              title={
+                isMobile
+                  ? t("nav.openMenu")
+                  : collapsed
+                    ? t("nav.expandMenu")
+                    : t("nav.collapseMenu")
+              }
+            >
+              <IconButton
+                edge="start"
+                onClick={() =>
+                  isMobile ? setMobileOpen(true) : setCollapsed((v) => !v)
+                }
+                aria-label={
+                  isMobile
+                    ? t("nav.openMenu")
+                    : collapsed
+                      ? t("nav.expandMenu")
+                      : t("nav.collapseMenu")
+                }
+                aria-expanded={isMobile ? mobileOpen : !collapsed}
+                sx={{ color: "text.primary" }}
+              >
+                <MenuIcon />
+              </IconButton>
+            </Tooltip>
+
+            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+              <Typography variant="h6" fontWeight={700} noWrap sx={{ fontSize: { xs: "1rem", sm: "1.25rem" } }}>
                 {t(`role.${role}`)}
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="text.secondary" noWrap component="div">
                 {user?.full_name}
               </Typography>
             </Box>
+
+            <LanguageSwitcher />
 
             <IconButton
               color="inherit"
               onClick={() => navigate("/notifications")}
               sx={{ color: "text.secondary" }}
+              aria-label={t("nav.notifications")}
             >
-              <Badge color="error" variant="dot" invisible>
+              <Badge color="error" badgeContent={unreadCount} max={99}>
                 <NotificationsIcon />
               </Badge>
             </IconButton>
@@ -141,10 +233,22 @@ export default function AppShell() {
           </Toolbar>
         </AppBar>
 
-        <Box component="main" sx={{ flexGrow: 1, p: { xs: 2, md: 4 } }}>
+        <Box
+          component="main"
+          sx={{
+            flexGrow: 1,
+            p: { xs: 2, md: 4 },
+            minWidth: 0,
+            // Reserve room for the fixed bottom bar plus the safe-area inset,
+            // otherwise the last control on a page sits underneath it.
+            pb: isMobile ? "calc(76px + env(safe-area-inset-bottom))" : undefined,
+          }}
+        >
           <Outlet />
         </Box>
       </Box>
+
+      {isMobile && <BottomNav role={role} onMore={() => setMobileOpen(true)} />}
     </Box>
   );
 }

@@ -2,9 +2,13 @@
 set -e
 cd /app
 
-echo "Waiting for postgres to be resolvable..."
+# The venv lives outside /app so the dev bind-mount cannot clobber it.
+VENV="${UV_PROJECT_ENVIRONMENT:-/opt/venv}"
+PY="$VENV/bin/python"
+
+echo "Waiting for postgres..."
 for i in $(seq 1 30); do
-    if .venv/bin/python -c "import socket; socket.gethostbyname('postgres')" 2>/dev/null; then
+    if "$PY" -c "import socket; socket.gethostbyname('postgres')" 2>/dev/null; then
         echo "postgres resolvable"
         break
     fi
@@ -13,7 +17,14 @@ for i in $(seq 1 30); do
 done
 
 echo "Running migrations..."
-.venv/bin/alembic upgrade head
+"$VENV/bin/alembic" upgrade head
 
-echo "Starting uvicorn..."
-exec .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+# --reload only in dev; production runs multiple workers instead.
+if [ "${ENV:-dev}" = "dev" ]; then
+    echo "Starting uvicorn (dev, autoreload)..."
+    exec "$VENV/bin/uvicorn" app.main:app --host 0.0.0.0 --port 8000 --reload
+else
+    echo "Starting uvicorn (production, ${UVICORN_WORKERS:-4} workers)..."
+    exec "$VENV/bin/uvicorn" app.main:app --host 0.0.0.0 --port 8000 \
+        --workers "${UVICORN_WORKERS:-4}" --proxy-headers --forwarded-allow-ips='*'
+fi

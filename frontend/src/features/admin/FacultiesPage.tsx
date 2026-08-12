@@ -20,11 +20,16 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import SchoolIcon from "@mui/icons-material/SchoolOutlined";
 import AutoAwesomeIcon from "@mui/icons-material/AutoAwesome";
+import EditIcon from "@mui/icons-material/EditOutlined";
+import BlockIcon from "@mui/icons-material/BlockOutlined";
 
+import type { FacultyOut } from "@/features/admin/adminApi";
 import {
   useCreateFacultyMutation,
+  useDeactivateFacultyMutation,
   useListDepartmentsQuery,
   useListFacultiesQuery,
+  useUpdateFacultyMutation,
 } from "@/features/admin/adminApi";
 import { formatApiError } from "@/shared/api/errors";
 
@@ -32,7 +37,13 @@ export default function FacultiesPage() {
   const { t } = useTranslation();
   const { data: faculties = [], isLoading } = useListFacultiesQuery();
   const { data: departments = [] } = useListDepartmentsQuery();
-  const [open, setOpen] = useState(false);
+  const [dialog, setDialog] = useState<{ edit?: FacultyOut } | null>(null);
+  const [deactivate] = useDeactivateFacultyMutation();
+
+  const handleDeactivate = async (f: FacultyOut) => {
+    if (!window.confirm(t("faculties.deactivateConfirm", { name: f.name }))) return;
+    await deactivate(f.id);
+  };
 
   return (
     <Box>
@@ -45,7 +56,7 @@ export default function FacultiesPage() {
             {t("faculties.subtitle")}
           </Typography>
         </Box>
-        <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setOpen(true)}>
+        <Button variant="outlined" startIcon={<AddIcon />} onClick={() => setDialog({})}>
           {t("faculties.newFaculty")}
         </Button>
       </Stack>
@@ -110,6 +121,21 @@ export default function FacultiesPage() {
                         {f.contact_email}
                       </Typography>
                     )}
+                    <Stack direction="row" spacing={0.5} mt={1}>
+                      <Button size="small" startIcon={<EditIcon />} onClick={() => setDialog({ edit: f })}>
+                        {t("common.edit")}
+                      </Button>
+                      {f.is_active && (
+                        <Button
+                          size="small"
+                          color="error"
+                          startIcon={<BlockIcon />}
+                          onClick={() => handleDeactivate(f)}
+                        >
+                          {t("common.deactivate")}
+                        </Button>
+                      )}
+                    </Stack>
                     {facDepts.length > 0 && (
                       <Box mt={2}>
                         <Typography variant="caption" color="text.secondary" fontWeight={600}>
@@ -130,26 +156,37 @@ export default function FacultiesPage() {
         </Grid>
       )}
 
-      {open && <FacultyDialog onClose={() => setOpen(false)} />}
+      {dialog && <FacultyDialog edit={dialog.edit} onClose={() => setDialog(null)} />}
     </Box>
   );
 }
 
-function FacultyDialog({ onClose }: { onClose: () => void }) {
+function FacultyDialog({ edit, onClose }: { edit?: FacultyOut; onClose: () => void }) {
   const { t } = useTranslation();
-  const [create, state] = useCreateFacultyMutation();
-  const [form, setForm] = useState({ name: "", code: "", contact_email: "" });
+  const [create, createState] = useCreateFacultyMutation();
+  const [update, updateState] = useUpdateFacultyMutation();
+  const saving = createState.isLoading || updateState.isLoading;
+  const [form, setForm] = useState({
+    name: edit?.name ?? "",
+    code: edit?.code ?? "",
+    contact_email: edit?.contact_email ?? "",
+  });
   const [err, setErr] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr(null);
+    const payload = {
+      name: form.name,
+      code: form.code.toUpperCase(),
+      contact_email: form.contact_email || null,
+    };
     try {
-      await create({
-        name: form.name,
-        code: form.code.toUpperCase(),
-        contact_email: form.contact_email || null,
-      }).unwrap();
+      if (edit) {
+        await update({ id: edit.id, data: payload }).unwrap();
+      } else {
+        await create(payload).unwrap();
+      }
       onClose();
     } catch (e: unknown) {
       setErr(formatApiError(e, t("common.error")));
@@ -159,7 +196,7 @@ function FacultyDialog({ onClose }: { onClose: () => void }) {
   return (
     <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
       <form onSubmit={handleSubmit}>
-        <DialogTitle>{t("faculties.newFaculty")}</DialogTitle>
+        <DialogTitle>{edit ? t("faculties.editFaculty") : t("faculties.newFaculty")}</DialogTitle>
         <DialogContent>
           {err && (
             <Alert severity="error" sx={{ mb: 2 }}>
@@ -193,7 +230,7 @@ function FacultyDialog({ onClose }: { onClose: () => void }) {
         </DialogContent>
         <DialogActions>
           <Button onClick={onClose}>{t("common.cancel")}</Button>
-          <Button type="submit" variant="contained" disabled={state.isLoading}>
+          <Button type="submit" variant="contained" disabled={saving}>
             {t("common.save")}
           </Button>
         </DialogActions>

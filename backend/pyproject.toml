@@ -33,6 +33,8 @@ dev = [
     "mypy>=1.13.0",
     "types-python-jose>=3.3.4",
     "httpx>=0.27.0",
+    # In-memory database for the integration tests.
+    "aiosqlite>=0.20.0",
 ]
 
 [tool.ruff]
@@ -41,7 +43,9 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF"]
-ignore = ["B008"]
+# B008: FastAPI's Depends()/Query() in defaults is the framework's own idiom.
+# RUF001: Uzbek copy legitimately uses en dashes and typographic apostrophes.
+ignore = ["B008", "RUF001"]
 
 [tool.mypy]
 python_version = "3.12"

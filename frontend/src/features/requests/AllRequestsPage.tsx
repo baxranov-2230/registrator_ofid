@@ -10,7 +10,7 @@ export default function AllRequestsPage() {
       subtitle={t("requests.allSubtitle")}
       detailBasePath="/admin/requests"
       showAssignee
-      unassignedFilter
+      triageFilters
     />
   );
 }

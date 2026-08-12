@@ -20,11 +20,16 @@ import {
 import AddIcon from "@mui/icons-material/Add";
 import SubAddIcon from "@mui/icons-material/SubdirectoryArrowRight";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import EditIcon from "@mui/icons-material/EditOutlined";
+import BlockIcon from "@mui/icons-material/BlockOutlined";
 
 import {
   CategoryNode,
+  Priority,
   useCreateCategoryMutation,
+  useDeactivateCategoryMutation,
   useListCategoriesQuery,
+  useUpdateCategoryMutation,
 } from "@/features/admin/adminApi";
 import { formatApiError } from "@/shared/api/errors";
 
@@ -38,7 +43,15 @@ const PRIORITY_COLORS: Record<string, string> = {
 export default function CategoriesPage() {
   const { t } = useTranslation();
   const { data: tree = [], isLoading } = useListCategoriesQuery();
-  const [dialog, setDialog] = useState<{ parentId: number | null } | null>(null);
+  const [dialog, setDialog] = useState<{ parentId: number | null; edit?: CategoryNode } | null>(
+    null,
+  );
+  const [deactivate] = useDeactivateCategoryMutation();
+
+  const handleDeactivate = async (node: CategoryNode) => {
+    if (!window.confirm(t("categories.deactivateConfirm", { name: node.name }))) return;
+    await deactivate(node.id);
+  };
 
   return (
     <Box>
@@ -72,12 +85,20 @@ export default function CategoriesPage() {
               node={node}
               depth={0}
               onAddChild={(parentId) => setDialog({ parentId })}
+              onEdit={(edit) => setDialog({ parentId: edit.parent_id, edit })}
+              onDeactivate={handleDeactivate}
             />
           ))}
         </Stack>
       )}
 
-      {dialog && <CategoryDialog parentId={dialog.parentId} onClose={() => setDialog(null)} />}
+      {dialog && (
+        <CategoryDialog
+          parentId={dialog.parentId}
+          edit={dialog.edit}
+          onClose={() => setDialog(null)}
+        />
+      )}
     </Box>
   );
 }
@@ -86,10 +107,14 @@ function CategoryCard({
   node,
   depth,
   onAddChild,
+  onEdit,
+  onDeactivate,
 }: {
   node: CategoryNode;
   depth: number;
   onAddChild: (parentId: number) => void;
+  onEdit: (node: CategoryNode) => void;
+  onDeactivate: (node: CategoryNode) => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -119,20 +144,39 @@ function CategoryCard({
                   }}
                 />
                 {!node.is_active && (
-                  <Chip size="small" label={t("common.no")} color="default" variant="outlined" />
+                  <Chip size="small" label={t("categories.inactive")} variant="outlined" />
                 )}
               </Stack>
             </Box>
+            <IconButton onClick={() => onEdit(node)} title={t("common.edit")}>
+              <EditIcon />
+            </IconButton>
             <IconButton onClick={() => onAddChild(node.id)} title={t("categories.addChild")}>
               <AddIcon />
             </IconButton>
+            {node.is_active && (
+              <IconButton
+                onClick={() => onDeactivate(node)}
+                title={t("common.deactivate")}
+                color="error"
+              >
+                <BlockIcon />
+              </IconButton>
+            )}
           </Stack>
         </CardContent>
       </Card>
       {node.children.length > 0 && (
         <Stack spacing={1} mt={1}>
           {node.children.map((child) => (
-            <CategoryCard key={child.id} node={child} depth={depth + 1} onAddChild={onAddChild} />
+            <CategoryCard
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              onAddChild={onAddChild}
+              onEdit={onEdit}
+              onDeactivate={onDeactivate}
+            />
           ))}
         </Stack>
       )}
@@ -142,30 +186,38 @@ function CategoryCard({
 
 function CategoryDialog({
   parentId,
+  edit,
   onClose,
 }: {
   parentId: number | null;
+  edit?: CategoryNode;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const [create, state] = useCreateCategoryMutation();
-  const [form, setForm] = useState({
-    name: "",
-    sla_hours: "24",
-    priority: "normal" as const,
+  const [create, createState] = useCreateCategoryMutation();
+  const [update, updateState] = useUpdateCategoryMutation();
+  const [form, setForm] = useState<{ name: string; sla_hours: string; priority: Priority }>({
+    name: edit?.name ?? "",
+    sla_hours: String(edit?.sla_hours ?? 24),
+    priority: edit?.priority ?? "normal",
   });
   const [err, setErr] = useState<string | null>(null);
+  const saving = createState.isLoading || updateState.isLoading;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr(null);
+    const payload = {
+      name: form.name,
+      sla_hours: Number(form.sla_hours),
+      priority: form.priority,
+    };
     try {
-      await create({
-        parent_id: parentId,
-        name: form.name,
-        sla_hours: Number(form.sla_hours),
-        priority: form.priority,
-      }).unwrap();
+      if (edit) {
+        await update({ id: edit.id, data: payload }).unwrap();
+      } else {
+        await create({ parent_id: parentId, ...payload }).unwrap();
+      }
       onClose();
     } catch (e: unknown) {
       setErr(formatApiError(e, t("common.error")));
@@ -176,7 +228,11 @@ function CategoryDialog({
     <Dialog open onClose={onClose} maxWidth="sm" fullWidth>
       <form onSubmit={handleSubmit}>
         <DialogTitle>
-          {parentId ? t("categories.newSubcategory") : t("categories.newCategory")}
+          {edit
+            ? t("categories.editCategory")
+            : parentId
+              ? t("categories.newSubcategory")
+              : t("categories.newCategory")}
         </DialogTitle>
         <DialogContent>
           {err && (
@@ -217,7 +273,7 @@ function CategoryDialog({
         </DialogContent>
         <DialogActions>
           <Button onClick={onClose}>{t("common.cancel")}</Button>
-          <Button type="submit" variant="contained" disabled={state.isLoading}>
+          <Button type="submit" variant="contained" disabled={saving}>
             {t("common.save")}
           </Button>
         </DialogActions>

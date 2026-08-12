@@ -5,14 +5,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.security import (
-    clear_login_failures,
     create_access_token,
     create_refresh_token,
-    record_login_failure,
+    new_session_id,
     register_refresh_jti,
+    touch_session,
     verify_password,
 )
-from app.models import Faculty, Role, StudentGroup, User
+from app.models import Department, Faculty, Role, Student, StudentGroup, User
 from app.services.hemis_client import HemisAuthError, hemis_fetch_me, hemis_login
 
 
@@ -89,6 +89,42 @@ async def _upsert_faculty(db: AsyncSession, ref: dict | None) -> Faculty | None:
     return row
 
 
+async def _upsert_department(
+    db: AsyncSession, ref: dict | None, faculty: Faculty | None
+) -> Department | None:
+    """Find or create a Department from a HEMIS reference.
+
+    Without this the student's department_id was never populated, so every
+    request inherited a NULL department and department-level routing and
+    reporting could never work (C-08).
+    """
+    if not ref or not ref.get("name") or faculty is None:
+        return None
+
+    name = ref["name"]
+    row = (
+        await db.execute(
+            select(Department).where(Department.faculty_id == faculty.id, Department.name == name)
+        )
+    ).scalar_one_or_none()
+    if row:
+        return row
+
+    code = (str(ref.get("code")) if ref.get("code") else _slugify_code(name))[:32]
+    suffix = 0
+    candidate = code
+    while (
+        await db.execute(select(Department).where(Department.code == candidate))
+    ).scalar_one_or_none():
+        suffix += 1
+        candidate = f"{code[:29]}-{suffix}"
+
+    row = Department(faculty_id=faculty.id, name=name, code=candidate)
+    db.add(row)
+    await db.flush()
+    return row
+
+
 async def _upsert_student_group(
     db: AsyncSession,
     ref: dict | None,
@@ -103,9 +139,7 @@ async def _upsert_student_group(
 
     if hemis_id:
         row = (
-            await db.execute(
-                select(StudentGroup).where(StudentGroup.hemis_id == str(hemis_id))
-            )
+            await db.execute(select(StudentGroup).where(StudentGroup.hemis_id == str(hemis_id)))
         ).scalar_one_or_none()
         if row:
             if faculty and row.faculty_id != faculty.id:
@@ -120,9 +154,7 @@ async def _upsert_student_group(
         await db.execute(
             select(StudentGroup)
             .where(StudentGroup.name == name)
-            .where(
-                StudentGroup.faculty_id == (faculty.id if faculty else None)
-            )
+            .where(StudentGroup.faculty_id == (faculty.id if faculty else None))
         )
     ).scalar_one_or_none()
     if row:
@@ -154,10 +186,13 @@ async def sync_student_from_profile(
     if not student_id:
         raise AuthError("HEMIS profilida talaba ID topilmadi")
 
+    # The HEMIS id now lives on the student profile, so look the identity up
+    # through it rather than on `users`.
     stmt = (
         select(User)
-        .where(User.external_student_id == student_id)
-        .options(selectinload(User.role))
+        .join(Student, Student.user_id == User.id)
+        .where(Student.external_student_id == student_id)
+        .options(selectinload(User.role), selectinload(User.student_profile))
     )
     user = (await db.execute(stmt)).scalar_one_or_none()
 
@@ -165,6 +200,7 @@ async def sync_student_from_profile(
     student_role = (await db.execute(role_stmt)).scalar_one()
 
     faculty = await _upsert_faculty(db, profile.get("faculty"))
+    department = await _upsert_department(db, profile.get("department"), faculty)
     group = await _upsert_student_group(
         db,
         profile.get("group"),
@@ -173,30 +209,33 @@ async def sync_student_from_profile(
         profile.get("education_year"),
     )
 
-    def _apply_profile(u: User) -> None:
+    def _apply_profile(u: User, sp: Student) -> None:
+        """Identity fields land on `users`, academic ones on `students`."""
         u.full_name = profile.get("full_name") or u.full_name
         if profile.get("email"):
             u.email = profile["email"]
         if profile.get("phone"):
             u.phone = profile["phone"]
-        if faculty:
-            u.faculty_id = faculty.id
-        if group:
-            u.student_group_id = group.id
-            u.group_name = group.name
-        u.birth_date = profile.get("birth_date") or u.birth_date
-        u.gender = profile.get("gender") or u.gender
-        u.address = profile.get("address") or u.address
-        u.image_path = profile.get("image_path") or u.image_path
-        u.specialty = profile.get("specialty") or u.specialty
-        u.level = profile.get("level") or u.level
-        u.semester = profile.get("semester") or u.semester
-        u.student_status = profile.get("student_status") or u.student_status
-        u.education_form = profile.get("education_form") or u.education_form
-        u.education_type = profile.get("education_type") or u.education_type
-        u.education_lang = profile.get("education_lang") or u.education_lang
-        u.payment_form = profile.get("payment_form") or u.payment_form
         u.last_login_at = datetime.now(UTC)
+
+        sp.external_student_id = student_id
+        if faculty:
+            sp.faculty_id = faculty.id
+        if group:
+            sp.student_group_id = group.id
+            sp.group_name = group.name
+        sp.birth_date = profile.get("birth_date") or sp.birth_date
+        sp.gender = profile.get("gender") or sp.gender
+        sp.address = profile.get("address") or sp.address
+        sp.image_path = profile.get("image_path") or sp.image_path
+        sp.specialty = profile.get("specialty") or sp.specialty
+        sp.level = profile.get("level") or sp.level
+        sp.semester = profile.get("semester") or sp.semester
+        sp.student_status = profile.get("student_status") or sp.student_status
+        sp.education_form = profile.get("education_form") or sp.education_form
+        sp.education_type = profile.get("education_type") or sp.education_type
+        sp.education_lang = profile.get("education_lang") or sp.education_lang
+        sp.payment_form = profile.get("payment_form") or sp.payment_form
 
     if user is None:
         user = User(
@@ -204,25 +243,30 @@ async def sync_student_from_profile(
             email=profile.get("email"),
             phone=profile.get("phone"),
             role_id=student_role.id,
-            faculty_id=faculty.id if faculty else None,
-            student_group_id=group.id if group else None,
-            external_student_id=student_id,
             is_active=True,
         )
         db.add(user)
-        _apply_profile(user)
+        await db.flush()
+        student_profile = Student(user_id=user.id)
+        db.add(student_profile)
+        user.student_profile = student_profile
+        _apply_profile(user, student_profile)
         await db.flush()
         await db.refresh(user, attribute_names=["role"])
     else:
-        _apply_profile(user)
+        # An identity created before the split may have no profile row yet.
+        student_profile = user.student_profile
+        if student_profile is None:
+            student_profile = Student(user_id=user.id)
+            db.add(student_profile)
+            user.student_profile = student_profile
+        _apply_profile(user, student_profile)
         await db.flush()
 
     return user
 
 
-async def authenticate_student_hemis(
-    db: AsyncSession, username: str, password: str
-) -> User:
+async def authenticate_student_hemis(db: AsyncSession, username: str, password: str) -> User:
     try:
         profile = await hemis_login(username, password)
     except HemisAuthError as exc:
@@ -230,9 +274,7 @@ async def authenticate_student_hemis(
     return await sync_student_from_profile(db, profile, fallback_student_id=username)
 
 
-async def authenticate_student_by_hemis_token(
-    db: AsyncSession, hemis_token: str
-) -> User:
+async def authenticate_student_by_hemis_token(db: AsyncSession, hemis_token: str) -> User:
     """Validate a HEMIS token against the HEMIS /me endpoint, then sync local user."""
     try:
         profile = await hemis_fetch_me(hemis_token)
@@ -242,7 +284,12 @@ async def authenticate_student_by_hemis_token(
 
 
 async def issue_tokens(redis, user: User) -> tuple[str, str]:
-    access = create_access_token(user)
-    refresh, jti = create_refresh_token(user)
+    """Mint a fresh access/refresh pair for a new login session."""
+    session_id = new_session_id()
+    access = create_access_token(user, session_id)
+    refresh, jti = create_refresh_token(user, session_id)
     await register_refresh_jti(redis, user.id, jti)
+    # Open the idle window; from here the session lives as long as the user
+    # keeps touching the API.
+    await touch_session(redis, session_id)
     return access, refresh

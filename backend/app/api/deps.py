@@ -1,4 +1,3 @@
-from fastapi import Depends
 from redis.asyncio import Redis
 
 from app.core.redis import get_redis as _get_redis
