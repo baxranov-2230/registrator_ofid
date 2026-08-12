@@ -469,33 +469,51 @@ cmd_admin() {
   EMAIL="$2"; PASSWORD="$3"; NAME="${4:-Administrator}"
 
   log "Admin yaratilmoqda: $EMAIL"
-  $COMPOSE exec -T backend sh -c "PYTHONPATH=/app /opt/venv/bin/python -c \"
-import asyncio
+  # Values travel as environment variables, never interpolated into the shell
+  # or python source: a password containing $, ", or ` would otherwise be
+  # silently mangled (or worse, executed).
+  $COMPOSE exec -T \
+    -e ROYD_ADMIN_EMAIL="$EMAIL" \
+    -e ROYD_ADMIN_PASSWORD="$PASSWORD" \
+    -e ROYD_ADMIN_NAME="$NAME" \
+    backend sh -c 'PYTHONPATH=/app /opt/venv/bin/python -c "
+import asyncio, os
 from sqlalchemy import select
 from app.core.db import SessionLocal
 from app.core.security import hash_password
-from app.models import Role, User
+from app.models import Employee, Role, User
 
 async def main():
+    email = os.environ[\"ROYD_ADMIN_EMAIL\"]
+    password = os.environ[\"ROYD_ADMIN_PASSWORD\"]
+    name = os.environ[\"ROYD_ADMIN_NAME\"]
     async with SessionLocal() as db:
-        admin_role = (await db.execute(select(Role).where(Role.name == 'admin'))).scalar_one()
-        email = '$EMAIL'
+        admin_role = (await db.execute(select(Role).where(Role.name == \"admin\"))).scalar_one()
         existing = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
         if existing:
-            existing.password_hash = hash_password('$PASSWORD')
+            existing.password_hash = hash_password(password)
             existing.role_id = admin_role.id
             existing.is_active = True
-            existing.full_name = '$NAME'
-            print('YANGILANDI:', email)
+            existing.full_name = name
+            user = existing
+            print(\"YANGILANDI:\", email)
         else:
-            db.add(User(full_name='$NAME', email=email,
-                        password_hash=hash_password('$PASSWORD'),
-                        role_id=admin_role.id, is_active=True))
-            print('YARATILDI:', email)
+            user = User(full_name=name, email=email,
+                        password_hash=hash_password(password),
+                        role_id=admin_role.id, is_active=True)
+            db.add(user)
+            print(\"YARATILDI:\", email)
+        await db.flush()
+        # Staff profiles live in their own table since 0005; without this row
+        # the account exists but has no employee record.
+        profile = (await db.execute(
+            select(Employee).where(Employee.user_id == user.id))).scalar_one_or_none()
+        if profile is None:
+            db.add(Employee(user_id=user.id))
         await db.commit()
 
 asyncio.run(main())
-\""
+"'
   ok "Admin tayyor: $EMAIL"
 }
 

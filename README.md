@@ -59,8 +59,19 @@ bo'lishi kerak**: Admin → Foydalanuvchilar → xodimni tahrirlab, fakultetini
 tanlang.
 
 These passwords are public, so `make seed` refuses to run when `ENV` is not
-`dev`. Use `./deploy.sh admin <email> <password>` to create the first real
-administrator.
+`dev`. On a real deployment create the first administrator with the dedicated
+script instead:
+
+```bash
+./create-admin.sh                      # prompts for email, hidden password, name
+./create-admin.sh --prod admin@ndkti.uz  # production stack
+./create-admin.sh --list               # list existing staff accounts
+./create-admin.sh --role registrator r@ndkti.uz
+```
+
+It rejects passwords under 12 characters and the published seed passwords, and
+passes credentials through the environment so characters like `$` or a backtick
+survive intact. (`./deploy.sh admin` still works and does the same thing.)
 
 Student login goes through HEMIS. Set `HEMIS_USE_MOCK=true` in `.env` for the
 offline fixtures — the mock accepts any password for any username, so it must
