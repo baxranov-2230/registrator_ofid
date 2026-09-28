@@ -247,6 +247,9 @@ da, client tokeni esa `/requests` da ishlamaydi.
 
 ### Murojaat yaratish
 
+Talaba LMS'da ariza yuborganda LMS talabaning ma'lumotlarini arizaning o'z
+maydonlari bilan bitta body'da yuboradi:
+
 ```http
 POST /api/v1/integration/requests
 Authorization: Bearer <access_token>
@@ -254,16 +257,11 @@ Idempotency-Key: 7f1c2e9a-...
 Content-Type: application/json
 
 {
-  "student": {
-    "hemis_id": "3052211100123",
-    "full_name": "Aliyev Vali",
-    "faculty": {"name": "Axborot texnologiyalari", "hemis_id": "12"},
-    "department": {"name": "Dasturiy injiniring"},          // ixtiyoriy
-    "group": {"name": "IT-21", "hemis_id": "345"},          // ixtiyoriy
-    "email": "vali@example.uz",                             // ixtiyoriy
-    "phone": "+998901234567",                               // ixtiyoriy
-    "specialty": "...", "level": 3, "education_form": "..." // ixtiyoriy
-  },
+  "student_hemis_id": "3052211100123",
+  "full_name": "Aliyev Vali Valiyevich",
+  "image": "https://lms.example.uz/photos/3052211100123.jpg",
+  "faculty": "Axborot texnologiyalari",
+  "group": "IT-21",
   "category_id": 12,
   "service_type_id": 1,
   "title": "Ma'lumotnoma kerak",
@@ -271,16 +269,32 @@ Content-Type: application/json
 }
 ```
 
-- Talaba `hemis_id` bo'yicha topiladi. Topilmasa, yaratiladi. Topilsa, uning
-  ma'lumotlari yuborilganlari bilan yangilanadi.
-- Fakultet, kafedra va guruh avval `hemis_id`, keyin `name` bo'yicha
-  qidiriladi. Topilmasa, yangisi yaratiladi. Murojaat shu fakultetga
-  biriktirilgan registratorga tushadi. Registrator biriktirilmagan bo'lsa,
-  `409` qaytadi va hech narsa saqlanmaydi.
+| Maydon | Majburiy | Izoh |
+|---|---|---|
+| `student_hemis_id` | ha | Talaba ID (HEMIS raqami), 1–64 belgi |
+| `full_name` | ha | F.I.Sh., 255 belgigacha |
+| `image` | yo'q | Rasm havolasi, faqat `http(s)://`, 500 belgigacha. Xodimlar sahifasida shu havola bo'yicha ko'rsatiladi |
+| `faculty` | ha | Fakultet nomi |
+| `group` | ha | Guruh nomi |
+| `category_id` | ha | Xizmat (katalogdagi barg), `GET /integration/categories` dan |
+| `service_type_id` | yo'q | Xizmat turi. Berilsa, xizmatga mos bo'lishi shart |
+| `title` | ha | 3–500 belgi |
+| `description` | ha | 3–10000 belgi |
+
+- Talaba `student_hemis_id` bo'yicha topiladi. Topilmasa, yaratiladi. Topilsa,
+  F.I.Sh., rasm, fakultet va guruh yuborilganlari bilan yangilanadi. `image`
+  yuborilmasa, avvalgi rasm saqlanib qoladi.
+- Fakultet nomi bo'yicha qidiriladi, guruh esa shu fakultet ichida nomi
+  bo'yicha qidiriladi. Topilmasa, yangisi yaratiladi. Murojaat shu fakultetga
+  biriktirilgan registratorga tushadi. Registrator biriktirilmagan bo'lsa
+  (masalan, fakultet nomida xato bo'lsa), `409` qaytadi va hech narsa
+  saqlanmaydi. Shuning uchun fakultet nomlari ROYD'dagi nomlar bilan bir xil
+  bo'lishi kerak.
+- Javobdagi `student_id` ROYD'ning ichki raqami, u `student_hemis_id` emas.
 - Javob kodlari §2 dagidek: `201`, `200` (shu `Idempotency-Key` bilan avval
   yaratilgan) va `400`. `409` esa registrator topilmaganda yoki
   `Idempotency-Key` bu talabaning boshqa integratsiya yaratgan murojaatida
-  ishlatilgan bo'lsa qaytadi.
+  ishlatilgan bo'lsa qaytadi. Majburiy maydon yetishmasa, `422` qaytadi.
 
 Xabarlar, fayllar va holat o'zgarishlari talaba nomidan yoziladi. Webhook'lar
 (§4) bu murojaatlar uchun ham yuboriladi.

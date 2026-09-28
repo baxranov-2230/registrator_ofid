@@ -2950,7 +2950,7 @@
           "integration"
         ],
         "summary": "Create Request",
-        "description": "File a request for a student described in the body.\n\nThe student is created or updated from the supplied data, and routed to\nthe registrator bound to the given faculty.",
+        "description": "File a request for the student described in the body.\n\nThe student is created or updated from `student_hemis_id`, `full_name`,\n`image`, `faculty` and `group`, and the request is routed to the\nregistrator bound to that faculty.",
         "operationId": "create_request_api_v1_integration_requests_post",
         "security": [
           {
@@ -4628,46 +4628,6 @@
         "title": "IntegrationMessage",
         "description": "A message from the student. There is no `is_internal`: that is staff-only."
       },
-      "IntegrationRef": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 255,
-            "minLength": 1,
-            "title": "Name"
-          },
-          "hemis_id": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 64
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Hemis Id"
-          },
-          "code": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 32
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Code"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name"
-        ],
-        "title": "IntegrationRef",
-        "description": "A faculty, department or group as the client's system knows it.\n\nMatched by `hemis_id` first, then by `name`; created when neither matches."
-      },
       "IntegrationRequestCreate": {
         "properties": {
           "category_id": {
@@ -4697,26 +4657,11 @@
             "minLength": 3,
             "title": "Description"
           },
-          "student": {
-            "$ref": "#/components/schemas/IntegrationStudent"
-          }
-        },
-        "type": "object",
-        "required": [
-          "category_id",
-          "title",
-          "description",
-          "student"
-        ],
-        "title": "IntegrationRequestCreate"
-      },
-      "IntegrationStudent": {
-        "properties": {
-          "hemis_id": {
+          "student_hemis_id": {
             "type": "string",
             "maxLength": 64,
             "minLength": 1,
-            "title": "Hemis Id"
+            "title": "Student Hemis Id"
           },
           "full_name": {
             "type": "string",
@@ -4724,99 +4669,45 @@
             "minLength": 1,
             "title": "Full Name"
           },
-          "faculty": {
-            "$ref": "#/components/schemas/IntegrationRef"
-          },
-          "department": {
+          "image": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/IntegrationRef"
+                "type": "string",
+                "maxLength": 500,
+                "minLength": 1,
+                "format": "uri"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "title": "Image"
+          },
+          "faculty": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Faculty"
           },
           "group": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/IntegrationRef"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "email": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "email"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Email"
-          },
-          "phone": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 32
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Phone"
-          },
-          "specialty": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 255
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Specialty"
-          },
-          "level": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "maximum": 10.0,
-                "minimum": 1.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Level"
-          },
-          "education_form": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 64
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Education Form"
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Group"
           }
         },
         "type": "object",
         "required": [
-          "hemis_id",
+          "category_id",
+          "title",
+          "description",
+          "student_hemis_id",
           "full_name",
-          "faculty"
+          "faculty",
+          "group"
         ],
-        "title": "IntegrationStudent",
-        "description": "The student a request is filed for, as supplied by the client.\n\nThe client is trusted with this data: the student is created or updated\nfrom it, and the faculty decides which registrator receives the request."
+        "title": "IntegrationRequestCreate",
+        "description": "A request filed by an external system (e.g. the LMS) for a student.\n\nThe system is trusted with the student fields: the student is created or\nupdated from them, and `faculty` decides which registrator receives the\nrequest."
       },
       "KpiReport": {
         "properties": {

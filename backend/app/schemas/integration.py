@@ -1,56 +1,39 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 
 from app.schemas.request import RequestCreate
 
 
-class IntegrationRef(BaseModel):
-    """A faculty, department or group as the client's system knows it.
+class IntegrationRequestCreate(RequestCreate):
+    """A request filed by an external system (e.g. the LMS) for a student.
 
-    Matched by `hemis_id` first, then by `name`; created when neither matches.
+    The system is trusted with the student fields: the student is created or
+    updated from them, and `faculty` decides which registrator receives the
+    request.
     """
 
-    name: str = Field(min_length=1, max_length=255)
-    hemis_id: str | None = Field(default=None, max_length=64)
-    code: str | None = Field(default=None, max_length=32)
+    # Trim before the length checks, so "  " is rejected rather than stored.
+    model_config = ConfigDict(str_strip_whitespace=True)
 
-
-class IntegrationStudent(BaseModel):
-    """The student a request is filed for, as supplied by the client.
-
-    The client is trusted with this data: the student is created or updated
-    from it, and the faculty decides which registrator receives the request.
-    """
-
-    hemis_id: str = Field(min_length=1, max_length=64)
+    #: HEMIS student number. Named apart from the response's `student_id`,
+    #: which is ROYD's internal user id.
+    student_hemis_id: str = Field(min_length=1, max_length=64)
     full_name: str = Field(min_length=1, max_length=255)
-    faculty: IntegrationRef
-    department: IntegrationRef | None = None
-    group: IntegrationRef | None = None
-    email: EmailStr | None = None
-    phone: str | None = Field(default=None, max_length=32)
-    specialty: str | None = Field(default=None, max_length=255)
-    #: Course number.
-    level: int | None = Field(default=None, ge=1, le=10)
-    education_form: str | None = Field(default=None, max_length=64)
+    #: Link to the student's photo, shown as-is in the staff UI.
+    image: AnyHttpUrl | None = Field(default=None, max_length=500)
+    #: Faculty name. Matched to an existing faculty, or created.
+    faculty: str = Field(min_length=1, max_length=255)
+    #: Group name, within that faculty. Matched, or created.
+    group: str = Field(min_length=1, max_length=128)
 
-    def to_profile(self) -> dict:
+    def student_profile(self) -> dict:
         """The normalized profile shape `sync_student_from_profile` expects."""
         return {
-            "student_id_number": self.hemis_id,
+            "student_id_number": self.student_hemis_id,
             "full_name": self.full_name,
-            "email": self.email,
-            "phone": self.phone,
-            "faculty": self.faculty.model_dump(),
-            "department": self.department.model_dump() if self.department else None,
-            "group": self.group.model_dump() if self.group else None,
-            "specialty": self.specialty,
-            "level": self.level,
-            "education_form": self.education_form,
+            "image_path": str(self.image) if self.image else None,
+            "faculty": {"name": self.faculty},
+            "group": {"name": self.group},
         }
-
-
-class IntegrationRequestCreate(RequestCreate):
-    student: IntegrationStudent
 
 
 class IntegrationMessage(BaseModel):

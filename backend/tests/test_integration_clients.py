@@ -9,22 +9,17 @@ from app.models.role import Role
 ALL_SCOPES = ["requests:read", "requests:write", "catalogs:read"]
 
 
-def _student(hemis_id: str = "3052211100123", **overrides) -> dict:
-    return {
-        "hemis_id": hemis_id,
-        "full_name": "Integratsiya Talabasi",
-        "faculty": {"name": "Axborot texnologiyalari"},
-        "group": {"name": "IT-21"},
-        **overrides,
-    }
-
-
 def _request_body(seeded, **overrides) -> dict:
+    """What the LMS sends: the student's fields beside the request's own."""
     return {
+        "student_hemis_id": "3052211100123",
+        "full_name": "Integratsiya Talabasi",
+        "image": "https://lms.test/photos/3052211100123.jpg",
+        "faculty": "Axborot texnologiyalari",
+        "group": "IT-21",
         "category_id": seeded["category_id"],
         "title": "Ma'lumotnoma kerak",
         "description": "O'qish joyidan ma'lumotnoma",
-        "student": _student(),
         **overrides,
     }
 
@@ -258,13 +253,17 @@ async def test_client_files_request_for_new_student(
     assert req["faculty_id"] == seeded["faculty_id"]
     assert req["student"]["full_name"] == "Integratsiya Talabasi"
 
-    # The student now exists and staff see the request like any other.
+    # The student now exists, with the photo and group the LMS sent.
     students = await client.get(
         "/api/v1/users",
         headers=await login(Role.ADMIN),
         params={"role": "student", "search": "3052211100123"},
     )
-    assert students.json()["total"] == 1
+    [student] = students.json()["items"]
+    assert student["external_student_id"] == "3052211100123"
+    assert student["image_path"] == "https://lms.test/photos/3052211100123.jpg"
+    assert student["group_name"] == "IT-21"
+    assert student["faculty_id"] == seeded["faculty_id"]
 
     again = await client.post(
         "/api/v1/integration/requests",
@@ -282,7 +281,7 @@ async def test_existing_student_is_updated_from_client_data(
     resp = await client.post(
         "/api/v1/integration/requests",
         headers=headers,
-        json=_request_body(seeded, student=_student("STU-TEST-1", full_name="Yangilangan Ism")),
+        json=_request_body(seeded, student_hemis_id="STU-TEST-1", full_name="Yangilangan Ism"),
     )
     assert resp.status_code == 201, resp.text
     assert resp.json()["student_id"] == seeded["user_ids"][Role.STUDENT]
@@ -294,7 +293,7 @@ async def test_unrouted_faculty_is_409(client, seeded, make_client, client_token
     resp = await client.post(
         "/api/v1/integration/requests",
         headers=headers,
-        json=_request_body(seeded, student=_student(faculty={"name": "Registratorsiz fakultet"})),
+        json=_request_body(seeded, faculty="Registratorsiz fakultet"),
     )
     assert resp.status_code == 409
 
@@ -423,3 +422,30 @@ async def test_file_upload_and_download(
     )
     assert download.status_code == 200
     assert download.content == b"%PDF-1.4 test"
+
+
+@pytest.mark.parametrize(
+    "missing", ["student_hemis_id", "full_name", "faculty", "group", "category_id", "title"]
+)
+async def test_required_fields(client, seeded, make_client, client_token, missing):
+    headers = await client_token(await make_client())
+    body = _request_body(seeded)
+    del body[missing]
+    resp = await client.post("/api/v1/integration/requests", headers=headers, json=body)
+    assert resp.status_code == 422
+
+
+async def test_image_is_optional_and_must_be_http(client, seeded, make_client, client_token):
+    headers = await client_token(await make_client())
+    no_image = _request_body(seeded)
+    del no_image["image"]
+    assert (
+        await client.post("/api/v1/integration/requests", headers=headers, json=no_image)
+    ).status_code == 201
+
+    bad = await client.post(
+        "/api/v1/integration/requests",
+        headers=headers,
+        json=_request_body(seeded, image="javascript:alert(1)"),
+    )
+    assert bad.status_code == 422

@@ -209,12 +209,13 @@ async def create_request(
     redis: Redis = Depends(get_redis_dep),
     client: ApiClient = Security(get_current_client, scopes=_WRITE),
 ) -> RequestDetail:
-    """File a request for a student described in the body.
+    """File a request for the student described in the body.
 
-    The student is created or updated from the supplied data, and routed to
-    the registrator bound to the given faculty.
+    The student is created or updated from `student_hemis_id`, `full_name`,
+    `image`, `faculty` and `group`, and the request is routed to the
+    registrator bound to that faculty.
     """
-    student = await sync_student_from_profile(db, data.student.to_profile(), mark_login=False)
+    student = await sync_student_from_profile(db, data.student_profile(), mark_login=False)
     if not student.is_active:
         raise HTTPException(status_code=403, detail="Talaba akkaunti faol emas")
 
