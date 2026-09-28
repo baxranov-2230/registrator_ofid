@@ -19,7 +19,16 @@ from app.core.db import get_db
 from app.core.redis import get_redis
 from app.core.security import hash_password
 from app.main import app
-from app.models import Base, Department, Faculty, RequestCategory, Role, User
+from app.models import (
+    Base,
+    Department,
+    Employee,
+    Faculty,
+    RequestCategory,
+    Role,
+    Student,
+    User,
+)
 
 TEST_DB_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -43,8 +52,20 @@ class FakeRedis:
         flat = keys[0] if len(keys) == 1 and isinstance(keys[0], list | tuple) else keys
         return [self.store.get(k) for k in flat]
 
-    async def set(self, key: str, value) -> bool:
+    async def set(self, key: str, value, nx: bool = False, ex: int | None = None) -> bool | None:
+        if nx and key in self.store:
+            return None
         self.store[key] = str(value)
+        return True
+
+    async def scan_iter(self, match: str = "*"):
+        import fnmatch
+
+        for key in list(self.store):
+            if fnmatch.fnmatchcase(key, match):
+                yield key
+
+    async def ping(self) -> bool:
         return True
 
     async def setex(self, key: str, _ttl: int, value) -> bool:
@@ -125,35 +146,64 @@ async def seeded(session_factory) -> dict:
         await db.flush()
 
         dept = Department(faculty_id=faculty.id, name="Dasturiy injiniring", code="DI")
-        category = RequestCategory(
-            name="Ma'lumotnoma", sla_hours=48, priority="normal", is_active=True
+        # The catalogue is two-level: requests are filed under a leaf service
+        # whose parent is the service type.
+        service_type = RequestCategory(
+            name="Akademik", sla_hours=48, priority="normal", is_active=True
         )
-        db.add_all([dept, category])
+        db.add_all([dept, service_type])
+        await db.flush()
+        category = RequestCategory(
+            parent_id=service_type.id,
+            name="Ma'lumotnoma",
+            sla_hours=48,
+            priority="normal",
+            is_active=True,
+        )
+        db.add(category)
         await db.flush()
 
+        # Every user in this suite shares one password, so hash it once.
+        password_hash = hash_password("parol12345")
         users = {}
         for role_name in Role.ALL:
             user = User(
                 full_name=f"Test {role_name}",
                 email=f"{role_name}@test.uz",
-                password_hash=hash_password("parol12345"),
+                password_hash=password_hash,
                 role_id=roles[role_name].id,
-                faculty_id=faculty.id,
                 is_active=True,
             )
             db.add(user)
             users[role_name] = user
         await db.flush()
 
+        # Faculty lives on the profile. The registrator's binding is what
+        # routes the student's requests to them.
+        for role_name, user in users.items():
+            if role_name == Role.STUDENT:
+                db.add(
+                    Student(
+                        user_id=user.id,
+                        external_student_id="STU-TEST-1",
+                        faculty_id=faculty.id,
+                        department_id=dept.id,
+                    )
+                )
+            else:
+                db.add(Employee(user_id=user.id, faculty_id=faculty.id))
+
         # A second student, to prove cross-tenant reads are refused.
         other = User(
             full_name="Boshqa talaba",
             email="student2@test.uz",
-            password_hash=hash_password("parol12345"),
+            password_hash=password_hash,
             role_id=roles[Role.STUDENT].id,
             is_active=True,
         )
         db.add(other)
+        await db.flush()
+        db.add(Student(user_id=other.id, external_student_id="STU-TEST-2", faculty_id=faculty.id))
         await db.commit()
 
         return {
@@ -162,6 +212,7 @@ async def seeded(session_factory) -> dict:
             "faculty_id": faculty.id,
             "department_id": dept.id,
             "category_id": category.id,
+            "service_type_id": service_type.id,
         }
 
 

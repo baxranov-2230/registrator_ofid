@@ -27,9 +27,9 @@ import PersonAddIcon from "@mui/icons-material/PersonAddAlt1";
 import HistoryIcon from "@mui/icons-material/History";
 
 import type { RootState } from "@/app/store";
-import { API_URL } from "@/shared/api/base";
 import {
   useAddMessageMutation,
+  useDownloadRequestFileMutation,
   useGetRequestQuery,
   useUploadRequestFileMutation,
   type RequestStatus,
@@ -53,6 +53,7 @@ export default function RequestDetailPage() {
   });
   const [addMessage, msgState] = useAddMessageMutation();
   const [uploadFile, uploadState] = useUploadRequestFileMutation();
+  const [downloadFile] = useDownloadRequestFileMutation();
 
   const [message, setMessage] = useState("");
   const [isInternal, setIsInternal] = useState(false);
@@ -62,6 +63,9 @@ export default function RequestDetailPage() {
 
   const canTransition = role === "staff" || role === "registrator" || role === "admin";
   const canAssign = role === "registrator" || role === "admin";
+  // Leadership is read-only; the server refuses its writes.
+  const canWrite = role !== "leadership";
+  const isClosed = data?.status === "completed" || data?.status === "rejected";
 
   /** Newest history comment — explains a return or rejection to the student. */
   const lastComment = useMemo(() => {
@@ -72,8 +76,6 @@ export default function RequestDetailPage() {
     return null;
   }, [data]);
 
-  const accessToken = useSelector((s: RootState) => s.auth.accessToken);
-
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     setActionErr(null);
@@ -82,7 +84,9 @@ export default function RequestDetailPage() {
       await addMessage({
         id: requestId,
         content: message.trim(),
-        is_internal: isInternal,
+        // The conversation with the student ends when the request closes;
+        // only staff notes can still be added.
+        is_internal: isClosed || isInternal,
       }).unwrap();
       setMessage("");
       setIsInternal(false);
@@ -102,12 +106,7 @@ export default function RequestDetailPage() {
 
   const handleDownload = async (fileId: number, name: string) => {
     try {
-      const resp = await fetch(`${API_URL}/api/v1/requests/${requestId}/files/${fileId}`, {
-        headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : undefined,
-      });
-      if (!resp.ok) throw new Error("download failed");
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
+      const url = await downloadFile({ id: requestId, fileId }).unwrap();
       const a = document.createElement("a");
       a.href = url;
       a.download = name;
@@ -194,7 +193,11 @@ export default function RequestDetailPage() {
                 />
                 <InfoRow
                   label={t("requests.sla")}
-                  value={new Date(data.sla_deadline).toLocaleString()}
+                  value={
+                    data.sla_paused_at
+                      ? `${new Date(data.sla_deadline).toLocaleString()} · ${t("requests.slaPaused")}`
+                      : new Date(data.sla_deadline).toLocaleString()
+                  }
                 />
               </Stack>
             </Box>
@@ -205,12 +208,9 @@ export default function RequestDetailPage() {
           {/* Everyone sees where the request stands, including the student. */}
           <RequestProgress status={data.status} lastComment={lastComment} />
 
-          {role === "student" && !["completed", "rejected", "returned"].includes(data.status) && (
-            <Alert severity="info" sx={{ mt: 2 }} icon={false}>
-              <Typography variant="caption" fontWeight={700} display="block">
-                {t("requests.whatNext")}
-              </Typography>
-              {t("requests.whatNextStudent")}
+          {data.sla_paused_at && (
+            <Alert severity="info" sx={{ mt: 2 }}>
+              {t("requests.slaPausedHint")}
             </Alert>
           )}
 
@@ -268,11 +268,11 @@ export default function RequestDetailPage() {
                       sx={{
                         p: 1.5,
                         bgcolor: m.is_internal
-                          ? "#FEF3C7"
+                          ? "warning.light"
                           : mine
                             ? "primary.main"
                             : "background.default",
-                        color: mine && !m.is_internal ? "white" : "inherit",
+                        color: m.is_internal ? "warning.dark" : mine ? "white" : "text.primary",
                         alignSelf: mine ? "flex-end" : "flex-start",
                         maxWidth: "80%",
                         ml: mine ? "auto" : 0,
@@ -308,6 +308,7 @@ export default function RequestDetailPage() {
                 })}
               </Stack>
 
+              {canWrite && (
               <form onSubmit={handleSendMessage}>
                 <Stack direction="row" spacing={1} alignItems="flex-start">
                   <TextField
@@ -329,8 +330,13 @@ export default function RequestDetailPage() {
                   </Button>
                 </Stack>
                 {/* Staff can post either to the student or to colleagues only,
-                    so the selector has to say which one is in effect. */}
-                {role !== "student" && (
+                    so the selector has to say which one is in effect. Once the
+                    request is closed only internal notes remain possible. */}
+                {isClosed ? (
+                  <Typography variant="caption" color="text.secondary" display="block" mt={1}>
+                    {t("requests.closedInternalOnly")}
+                  </Typography>
+                ) : (
                   <TextField
                     select
                     size="small"
@@ -347,6 +353,7 @@ export default function RequestDetailPage() {
                   </TextField>
                 )}
               </form>
+              )}
             </CardContent>
           </Card>
 
@@ -361,7 +368,7 @@ export default function RequestDetailPage() {
                   size="small"
                   startIcon={<AttachFileIcon />}
                   onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadState.isLoading}
+                  disabled={uploadState.isLoading || isClosed || !canWrite}
                 >
                   {t("requests.uploadFile")}
                 </Button>

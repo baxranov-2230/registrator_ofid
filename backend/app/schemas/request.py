@@ -29,7 +29,7 @@ class RequestCreate(BaseModel):
     #: a mismatched type/service pair is rejected rather than quietly accepted.
     service_type_id: int | None = None
     title: str = Field(min_length=3, max_length=500)
-    description: str = Field(min_length=3)
+    description: str = Field(min_length=3, max_length=10000)
 
 
 class RequestAssign(BaseModel):
@@ -41,11 +41,16 @@ class RequestAssign(BaseModel):
 
 class RequestTransition(BaseModel):
     status: str
-    comment: str | None = None
+    comment: str | None = Field(default=None, max_length=5000)
+
+
+class RequestResubmit(BaseModel):
+    #: What the student changed, for the office to read.
+    comment: str | None = Field(default=None, max_length=5000)
 
 
 class MessageCreate(BaseModel):
-    content: str = Field(min_length=1)
+    content: str = Field(min_length=1, max_length=5000)
     is_internal: bool = False
 
 
@@ -108,6 +113,9 @@ class RequestSummary(BaseModel):
     faculty_id: int | None = None
     department_id: int | None = None
     sla_deadline: datetime
+    #: Set while the request is returned to the student and the SLA is paused.
+    sla_paused_at: datetime | None = None
+    client_ref: str | None = None
     created_at: datetime
     updated_at: datetime
     closed_at: datetime | None = None
@@ -115,8 +123,11 @@ class RequestSummary(BaseModel):
     @computed_field  # type: ignore[prop-decorator]
     @property
     def is_overdue(self) -> bool:
-        """Open past its SLA deadline. Drives the overdue counters and badges."""
-        if self.status in RequestStatus.CLOSED:
+        """Past its SLA deadline while the clock runs. Drives overdue badges.
+
+        A returned request waits on the student, so it is never overdue.
+        """
+        if self.status not in RequestStatus.SLA_RUNNING:
             return False
         deadline = self.sla_deadline
         if deadline.tzinfo is None:

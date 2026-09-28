@@ -80,6 +80,41 @@ class Settings(BaseSettings):
     login_window_seconds: int = 900
 
     sla_check_interval_minutes: int = 15
+    #: Reglament 7.2: the assignee is reminded 24 hours before the deadline.
+    sla_warning_hours: int = 24
+    # Reglament 7.3: only working days count towards an SLA. Days are judged in
+    # the university's timezone. Weekdays use Python numbering (0 = Monday).
+    sla_timezone: str = "Asia/Tashkent"
+    sla_workdays: str = "0,1,2,3,4"
+    #: Holidays that fall on the same date every year (MM-DD).
+    sla_fixed_holidays: str = "01-01,03-08,03-21,05-09,09-01,10-01,12-08"
+    #: One-off days off (YYYY-MM-DD): Ramazon and Qurbon hayit, transferred days.
+    sla_holidays: str = ""
+
+    #: Minimum length for passwords set through the API.
+    password_min_length: int = 10
+    #: Failed logins for one account within the window before it is locked
+    #: for the rest of that window. Below this the response is only delayed.
+    login_lockout_attempts: int = 10
+
+    #: Public address of the web app; used to build links in emails.
+    public_base_url: str = "http://localhost:8080"
+
+    # Outbound events for the partner platform students apply through. Empty
+    # URL disables webhooks. Each delivery is signed with HMAC-SHA256 over the
+    # raw body using the secret, sent as `X-ROYD-Signature: sha256=<hex>`.
+    webhook_url: str = ""
+    webhook_secret: str = ""
+    webhook_timeout_seconds: int = 10
+    #: Delivery attempts for an email or webhook before it is marked failed.
+    outbox_max_attempts: int = 8
+    outbox_interval_seconds: int = 30
+
+    #: Issuer shown in authenticator apps for the second factor.
+    totp_issuer: str = "ROYD"
+
+    #: Error tracking. Empty disables it.
+    sentry_dsn: str = ""
 
     @property
     def cors_origins_list(self) -> list[str]:
@@ -119,6 +154,11 @@ class Settings(BaseSettings):
         # would flag the "postgres" inside the "postgresql+asyncpg" scheme.
         if _db_password(self.database_url) in _INSECURE_DB_PASSWORDS:
             problems.append("DATABASE_URL still uses a default password")
+        # An unsigned webhook lets anyone who learns the URL forge events.
+        if self.webhook_url and len(self.webhook_secret) < 32:
+            problems.append("WEBHOOK_SECRET must be at least 32 characters when WEBHOOK_URL is set")
+        if self.webhook_url and not self.webhook_url.startswith("https://"):
+            problems.append("WEBHOOK_URL must use https:// outside dev")
 
         if problems:
             raise ValueError(

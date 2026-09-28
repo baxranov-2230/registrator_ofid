@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import PageHeader from "@/shared/components/PageHeader";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
@@ -22,7 +23,6 @@ import {
   Typography,
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
-import SchoolIcon from "@mui/icons-material/SchoolOutlined";
 
 import {
   useListFacultiesQuery,
@@ -46,8 +46,29 @@ export default function StudentUsersPage() {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
 
-  const { data: students = [], isLoading, error } = useListUsersQuery({ role: "student" });
+  const debouncedSearch = useDebounced(search.trim());
+  // Filtering and paging run on the server: downloading every student to
+  // filter in the browser stopped scaling long before the directory was full.
+  const { data, isLoading, isFetching, error } = useListUsersQuery({
+    role: "student",
+    limit: rowsPerPage,
+    offset: page * rowsPerPage,
+    ...(debouncedSearch ? { search: debouncedSearch } : {}),
+    ...(facultyFilter ? { faculty_id: Number(facultyFilter) } : {}),
+    ...(activeFilter ? { is_active: activeFilter === "1" } : {}),
+  });
+  const visible = data?.items ?? [];
+  const total = data?.total ?? 0;
+  // The summary counters are just totals of two narrow queries.
+  const { data: allStudents } = useListUsersQuery({ role: "student", limit: 1 });
+  const { data: activeStudents } = useListUsersQuery({
+    role: "student",
+    is_active: true,
+    limit: 1,
+  });
   const { data: faculties = [] } = useListFacultiesQuery({ include_inactive: true });
+
+  useEffect(() => setPage(0), [debouncedSearch]);
 
   const facultyName = useMemo(
     () => new Map(faculties.map((f) => [f.id, f.name])),
@@ -59,53 +80,11 @@ export default function StudentUsersPage() {
   const activeFaculties = useMemo(() => faculties.filter((f) => f.is_active), [faculties]);
   const activeFacultyCount = activeFaculties.length;
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    return students.filter((u) => {
-      if (facultyFilter && String(u.faculty_id) !== facultyFilter) return false;
-      if (activeFilter === "1" && !u.is_active) return false;
-      if (activeFilter === "0" && u.is_active) return false;
-      if (!q) return true;
-      return (
-        u.full_name.toLowerCase().includes(q) ||
-        (u.external_student_id?.toLowerCase().includes(q) ?? false) ||
-        (u.group_name?.toLowerCase().includes(q) ?? false)
-      );
-    });
-  }, [students, search, facultyFilter, activeFilter]);
-
-  // Any filter change invalidates the current page number.
-  const visible = filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
   const resetPage = () => setPage(0);
 
   return (
     <Box sx={{ width: "100%" }}>
-      <Card sx={{ mb: 3, background: "linear-gradient(120deg, #F5F8FF 0%, #FFFFFF 55%)" }}>
-        <Stack direction="row" spacing={2} alignItems="center" sx={{ p: { xs: 2.5, md: 3.5 } }}>
-          <Box
-            sx={{
-              width: 52,
-              height: 52,
-              flexShrink: 0,
-              borderRadius: 2.5,
-              display: { xs: "none", sm: "grid" },
-              placeItems: "center",
-              color: "#fff",
-              background: "linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)",
-            }}
-          >
-            <SchoolIcon />
-          </Box>
-          <Box sx={{ minWidth: 0 }}>
-            <Typography variant="h5" fontWeight={800} sx={{ letterSpacing: "-0.02em" }}>
-              {t("users.studentsTitle")}
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              {t("users.studentsSubtitle")}
-            </Typography>
-          </Box>
-        </Stack>
-      </Card>
+      <PageHeader title={t("users.studentsTitle")} subtitle={t("users.studentsSubtitle")} />
 
       {/* Students arrive through HEMIS, so there is no "add" button here. */}
       <Alert severity="info" sx={{ mb: 3 }}>
@@ -120,13 +99,13 @@ export default function StudentUsersPage() {
           gridTemplateColumns: { xs: "repeat(2, 1fr)", md: "repeat(3, 1fr)" },
         }}
       >
-        <SummaryCard label={t("users.totalStudents")} value={students.length} color="#4F46E5" />
+        <SummaryCard label={t("users.totalStudents")} value={allStudents?.total ?? 0} color="#25A194" />
         <SummaryCard
           label={t("users.activeStudents")}
-          value={students.filter((s) => s.is_active).length}
-          color="#10B981"
+          value={activeStudents?.total ?? 0}
+          color="#15803D"
         />
-        <SummaryCard label={t("nav.faculties")} value={activeFacultyCount} color="#3B82F6" />
+        <SummaryCard label={t("nav.faculties")} value={activeFacultyCount} color="#2D57FE" />
       </Box>
 
       <Card sx={{ mb: 2 }}>
@@ -212,7 +191,7 @@ export default function StudentUsersPage() {
                   </TableCell>
                 </TableRow>
               )}
-              {!isLoading && filtered.length === 0 && (
+              {!isLoading && visible.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={6} align="center" sx={{ py: 6 }}>
                     <Typography color="text.secondary">{t("users.noResults")}</Typography>
@@ -220,7 +199,7 @@ export default function StudentUsersPage() {
                 </TableRow>
               )}
               {visible.map((u) => (
-                <TableRow key={u.id} hover>
+                <TableRow key={u.id} hover sx={{ opacity: isFetching ? 0.6 : 1 }}>
                   <TableCell>
                     <Stack direction="row" spacing={2} alignItems="center">
                       <Avatar
@@ -281,7 +260,7 @@ export default function StudentUsersPage() {
 
           <TablePagination
             component="div"
-            count={filtered.length}
+            count={total}
             page={page}
             onPageChange={(_e, next) => setPage(next)}
             rowsPerPage={rowsPerPage}
@@ -302,7 +281,7 @@ function SummaryCard({ label, value, color }: { label: string; value: number; co
   return (
     <Card>
       <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
-        <Typography variant="h5" fontWeight={800} sx={{ color }}>
+        <Typography variant="h5" fontWeight={600} sx={{ color }}>
           {value}
         </Typography>
         <Typography variant="caption" color="text.secondary">
@@ -311,4 +290,14 @@ function SummaryCard({ label, value, color }: { label: string; value: number; co
       </CardContent>
     </Card>
   );
+}
+
+/** Debounce the search box so each keystroke is not a request. */
+function useDebounced<T>(value: T, delay = 350): T {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
 }

@@ -6,21 +6,20 @@ import {
   Card,
   CardContent,
   Chip,
-  Divider,
   Grid,
   Paper,
   Stack,
   Typography,
 } from "@mui/material";
-import SchoolIcon from "@mui/icons-material/School";
 import BadgeIcon from "@mui/icons-material/Badge";
 import EmailIcon from "@mui/icons-material/Email";
 import PhoneIcon from "@mui/icons-material/Phone";
 import CakeIcon from "@mui/icons-material/Cake";
 import HomeIcon from "@mui/icons-material/Home";
-import GroupIcon from "@mui/icons-material/Group";
 
 import type { RootState } from "@/app/store";
+import SecuritySettings from "@/features/auth/SecuritySettings";
+import PageHeader from "@/shared/components/PageHeader";
 
 export default function ProfilePage() {
   const { t } = useTranslation();
@@ -28,7 +27,6 @@ export default function ProfilePage() {
 
   if (!user) return null;
 
-  const isStudent = user.role.name === "student";
   const initials = user.full_name
     .split(" ")
     .map((w) => w[0])
@@ -38,7 +36,8 @@ export default function ProfilePage() {
 
   return (
     <Box>
-      <Paper sx={{ p: 4, mb: 3 }}>
+      <PageHeader title={t("nav.profile")} />
+      <Paper sx={{ p: { xs: 2.5, md: 4 }, mb: 3, borderRadius: "8px", borderTop: "4px solid", borderColor: "primary.main" }}>
         <Stack direction={{ xs: "column", md: "row" }} spacing={3} alignItems="center">
           <Avatar
             src={user.image_path || undefined}
@@ -53,16 +52,10 @@ export default function ProfilePage() {
             <Stack direction="row" spacing={1} mt={1} flexWrap="wrap">
               <Chip
                 icon={<BadgeIcon />}
-                label={user.role.description || user.role.name}
+                label={t(`role.${user.role.name}`)}
                 color="primary"
                 variant="outlined"
               />
-              {isStudent && user.external_student_id && (
-                <Chip icon={<SchoolIcon />} label={user.external_student_id} variant="outlined" />
-              )}
-              {isStudent && user.group_name && (
-                <Chip icon={<GroupIcon />} label={user.group_name} variant="outlined" />
-              )}
             </Stack>
           </Box>
         </Stack>
@@ -102,36 +95,9 @@ export default function ProfilePage() {
           </Card>
         </Grid>
 
-        {isStudent && (
-          <Grid item xs={12} md={6}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" mb={2}>
-                  {t("profile.academic")}
-                </Typography>
-                <Stack spacing={2}>
-                  <InfoRow label={t("profile.studentId")} value={user.external_student_id} />
-                  <InfoRow label={t("profile.specialty")} value={user.specialty} />
-                  <InfoRow label={t("profile.group")} value={user.group_name} />
-                  <InfoRow
-                    label={t("profile.level")}
-                    value={user.level ? `${user.level}-kurs` : null}
-                  />
-                  <InfoRow
-                    label={t("profile.semester")}
-                    value={user.semester ? `${user.semester}-semestr` : null}
-                  />
-                  <Divider />
-                  <InfoRow label={t("profile.studentStatus")} value={user.student_status} />
-                  <InfoRow label={t("profile.educationForm")} value={user.education_form} />
-                  <InfoRow label={t("profile.educationType")} value={user.education_type} />
-                  <InfoRow label={t("profile.educationLang")} value={user.education_lang} />
-                  <InfoRow label={t("profile.paymentForm")} value={user.payment_form} />
-                </Stack>
-              </CardContent>
-            </Card>
-          </Grid>
-        )}
+        <Grid item xs={12} md={6}>
+          <SecuritySettings />
+        </Grid>
       </Grid>
     </Box>
   );

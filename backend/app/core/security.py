@@ -3,10 +3,10 @@ import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import bcrypt
+import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import JWTError, jwt
-from passlib.context import CryptContext
 from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +26,9 @@ async def _redis_dep() -> Redis:
     """
     return get_redis()
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__rounds=12)
+
+#: Reglament 10.1: bcrypt with at least 12 rounds.
+BCRYPT_ROUNDS = 12
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
 REFRESH_BLOCKLIST_PREFIX = "refresh:blocked:"
@@ -35,11 +37,16 @@ SESSION_SEEN_PREFIX = "session:seen:"
 
 
 def hash_password(plain: str) -> str:
-    return pwd_context.hash(plain)
+    return bcrypt.hashpw(plain.encode(), bcrypt.gensalt(rounds=BCRYPT_ROUNDS)).decode()
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    # Hashes written by passlib are standard $2b$ strings, so existing
+    # passwords keep working after the switch to calling bcrypt directly.
+    try:
+        return bcrypt.checkpw(plain.encode(), hashed.encode())
+    except ValueError:
+        return False
 
 
 def _create_token(
@@ -98,10 +105,21 @@ def create_refresh_token(user: User, session_id: str) -> tuple[str, str]:
     return token, jti
 
 
+def create_mfa_token(user: User) -> str:
+    """Proof that the password step succeeded, valid only for the 2FA step.
+
+    Its own token type, so it can never be used as an access or refresh token.
+    """
+    token, _ = _create_token(
+        subject=str(user.id), claims={}, ttl=timedelta(minutes=5), token_type="mfa"
+    )
+    return token
+
+
 def decode_token(token: str) -> dict[str, Any]:
     try:
         return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-    except JWTError as exc:
+    except jwt.PyJWTError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
@@ -153,6 +171,18 @@ async def end_session(redis: Redis, session_id: str) -> None:
         await redis.delete(f"{SESSION_SEEN_PREFIX}{session_id}")
 
 
+async def revoke_all_refresh_tokens(redis: Redis, user_id: int) -> int:
+    """Invalidate every refresh token a user holds, e.g. after a password change.
+
+    Access tokens already issued stay valid for their few remaining minutes;
+    none of them can be renewed.
+    """
+    keys = [key async for key in redis.scan_iter(match=f"{REFRESH_ACTIVE_PREFIX}{user_id}:*")]
+    if keys:
+        await redis.delete(*keys)
+    return len(keys)
+
+
 async def get_current_user(
     token: str | None = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
@@ -199,14 +229,16 @@ def require_roles(*role_names: str):
 
 
 def client_ip(request: Request) -> str:
-    """Caller IP, honouring the reverse proxy in front of the app.
+    """Caller IP as seen by our own nginx.
 
-    nginx sets X-Forwarded-For; uvicorn runs with --proxy-headers in production
-    but we read the header defensively so rate limiting also works in dev.
+    nginx overwrites X-Real-IP with the address of the TCP peer, so a client
+    cannot choose it. X-Forwarded-For is not used: nginx *appends* to whatever
+    the client sent, so its first entry was attacker-controlled and rotating
+    it bypassed the per-IP login limit entirely.
     """
-    forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
     return request.client.host if request.client else "unknown"
 
 
@@ -215,10 +247,14 @@ async def check_brute_force(redis: Redis, *, identity: str, ip: str) -> None:
 
     Two counters, deliberately asymmetric (B-05). The per-account counter stops
     password guessing against one user; the per-IP counter — with a much higher
-    budget — stops someone spraying many accounts from one host. Keying on the
-    account alone would let an attacker lock any user out at will, so the
-    account counter only ever delays, while the IP counter does the real
-    blocking.
+    budget — stops someone spraying many accounts from one host.
+
+    The account counter first only delays (so a few typos never lock anyone
+    out), then locks the account for the rest of the window once it reaches
+    `login_lockout_attempts`. A lock an attacker can trigger is a real cost,
+    but with the per-IP counter now keyed on an address the client cannot
+    forge, reaching the lock takes many hosts — and without it a distributed
+    guesser could try passwords against an admin account forever.
     """
     user_key = f"login:fail:user:{identity}"
     ip_key = f"login:fail:ip:{ip}"
@@ -232,9 +268,20 @@ async def check_brute_force(redis: Redis, *, identity: str, ip: str) -> None:
             headers={"Retry-After": str(settings.login_window_seconds)},
         )
 
+    if user_count and int(user_count) >= settings.login_lockout_attempts:
+        # Past the backoff range: the account is locked for the rest of the
+        # window. Backoff alone never stopped a patient attacker, it only
+        # slowed each guess down.
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Akkaunt vaqtincha bloklandi: juda ko'p noto'g'ri urinish. "
+            "Keyinroq qayta urinib ko'ring.",
+            headers={"Retry-After": str(settings.login_window_seconds)},
+        )
+
     if user_count and int(user_count) >= settings.login_max_attempts_per_user:
-        # Exponential backoff rather than a hard lock, so this cannot be used
-        # to deny a legitimate user access to their own account.
+        # First a short exponential delay, so a user who mistyped a few times
+        # is slowed down rather than locked out.
         over = int(user_count) - settings.login_max_attempts_per_user
         delay = min(2**over, 30)
         await asyncio.sleep(delay)

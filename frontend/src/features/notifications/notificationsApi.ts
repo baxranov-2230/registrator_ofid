@@ -27,6 +27,12 @@ export const notificationsApi = api.injectEndpoints({
         providesTags: [{ type: "Notification", id: "LIST" }],
       },
     ),
+    // A count rather than the unread list, so the badge is not capped at the
+    // list's page size. Shares the LIST tag so every invalidation refreshes it.
+    unreadNotificationCount: build.query<{ count: number }, void>({
+      query: () => "/notifications/unread-count",
+      providesTags: [{ type: "Notification", id: "LIST" }],
+    }),
     markNotificationRead: build.mutation<NotificationOut, number>({
       query: (id) => ({ url: `/notifications/${id}/read`, method: "PATCH" }),
       invalidatesTags: [{ type: "Notification", id: "LIST" }],
@@ -40,6 +46,7 @@ export const notificationsApi = api.injectEndpoints({
 
 export const {
   useListNotificationsQuery,
+  useUnreadNotificationCountQuery,
   useMarkNotificationReadMutation,
   useMarkAllNotificationsReadMutation,
 } = notificationsApi;

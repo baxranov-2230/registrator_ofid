@@ -1,24 +1,33 @@
 #!/usr/bin/env bash
 # Admin qo'shish. Hech narsa so'ramaydi.
 #
-#   ./create-admin.sh          — dev
-#   ./create-admin.sh --prod   — server
+#   ./create-admin.sh                          — dev, admin@ndkti.uz
+#   ./create-admin.sh --prod                   — server
+#   ./create-admin.sh --prod boshqa@ndkti.uz   — boshqa email bilan
 #
-# Oxirida email va parolni chop etadi — parolni saqlab qo'ying.
+# Har safar yangi tasodifiy parol yaratiladi va oxirida bir marta chop etiladi.
+# Qayta ishga tushirish shu akkaunt parolini yangisiga almashtiradi.
+#
+# Parol skript ichida SAQLANMAYDI: bu fayl git'da turadi, u yerga yozilgan
+# parol repo'ni ko'rgan har kimga ma'lum bo'lib qoladi.
 
 set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ── Shu yerni o'zgartiring ──────────────────────────────────────────────────
-EMAIL="baxranovahror2230@gmail.com"
-PASSWORD="ahror2230"
-NAME="Administrator"
-# ────────────────────────────────────────────────────────────────────────────
-
 if [ "${1:-}" = "--prod" ]; then
   COMPOSE="docker compose -f infra/docker-compose.prod.yml --env-file .env.prod"
+  shift
 else
   COMPOSE="docker compose -f infra/docker-compose.yml --env-file .env"
+fi
+
+EMAIL="${1:-admin@ndkti.uz}"
+NAME="Administrator"
+
+if command -v openssl >/dev/null 2>&1; then
+  PASSWORD="$(openssl rand -base64 24 | tr -d '/+=' | head -c 20)"
+else
+  PASSWORD="$(head -c 32 /dev/urandom | base64 | tr -d '/+=' | head -c 20)"
 fi
 
 # Parol environment orqali uzatiladi — matnga qo'yilsa `$` yoki backtick

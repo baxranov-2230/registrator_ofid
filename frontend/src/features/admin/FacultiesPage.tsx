@@ -49,7 +49,7 @@ export default function FacultiesPage() {
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
         <Box>
-          <Typography variant="h4" fontWeight={700}>
+          <Typography variant="h4" fontWeight={600}>
             {t("nav.faculties")}
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -90,7 +90,7 @@ export default function FacultiesPage() {
                           display: "flex",
                           alignItems: "center",
                           justifyContent: "center",
-                          background: "linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)",
+                          background: "linear-gradient(135deg, #27A798 0%, #1C7F73 100%)",
                           color: "white",
                         }}
                       >

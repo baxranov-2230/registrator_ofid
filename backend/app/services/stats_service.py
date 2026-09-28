@@ -22,6 +22,13 @@ def _visible_requests(user: User) -> Select:
         return stmt.where(Request.student_id == user.id)
     if role == Role.STAFF:
         return stmt.where(Request.assigned_to == user.id)
+    if role == Role.REGISTRATOR and user.faculty_id is not None:
+        # A registrator bound to a faculty is accountable for that faculty's
+        # queue; university-wide totals buried their own numbers. Requests
+        # handed to them from elsewhere still count.
+        return stmt.where(
+            (Request.faculty_id == user.faculty_id) | (Request.assigned_to == user.id)
+        )
     return stmt
 
 
@@ -43,7 +50,7 @@ async def dashboard_stats(db: AsyncSession, user: User) -> dict:
         await db.execute(
             select(func.count())
             .select_from(scoped)
-            .where(scoped.c.status.in_(RequestStatus.OPEN), scoped.c.sla_deadline < now)
+            .where(scoped.c.status.in_(RequestStatus.SLA_RUNNING), scoped.c.sla_deadline < now)
         )
     ).scalar_one()
 
@@ -52,7 +59,7 @@ async def dashboard_stats(db: AsyncSession, user: User) -> dict:
             select(func.count())
             .select_from(scoped)
             .where(
-                scoped.c.status.in_(RequestStatus.OPEN),
+                scoped.c.status.in_(RequestStatus.SLA_RUNNING),
                 scoped.c.sla_deadline >= now,
                 scoped.c.sla_deadline < now + timedelta(hours=24),
             )

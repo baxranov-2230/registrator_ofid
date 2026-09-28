@@ -221,6 +221,8 @@ async def sync_student_from_profile(
         sp.external_student_id = student_id
         if faculty:
             sp.faculty_id = faculty.id
+        if department:
+            sp.department_id = department.id
         if group:
             sp.student_group_id = group.id
             sp.group_name = group.name

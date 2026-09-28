@@ -7,6 +7,8 @@ class AuditLogOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     user_id: int | None = None
+    #: Resolved so the audit screen names the actor instead of showing an id.
+    user_name: str | None = None
     action: str
     entity_type: str
     entity_id: int | None = None

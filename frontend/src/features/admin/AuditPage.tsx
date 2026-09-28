@@ -13,6 +13,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
+  TablePagination,
   TableRow,
   TextField,
   Typography,
@@ -28,7 +29,7 @@ const ACTION_COLORS: Record<string, string> = {
   deactivate: "#EF4444",
   login: "#8B5CF6",
   assign: "#F59E0B",
-  transition: "#6366F1",
+  transition: "#A80BE4",
 };
 
 function actionColor(action: string): string {
@@ -40,18 +41,22 @@ export default function AuditPage() {
   const { t } = useTranslation();
   const [entityType, setEntityType] = useState("");
   const [action, setAction] = useState("");
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(50);
 
-  const { data: logs = [], isLoading } = useListAuditQuery({
+  const { data, isLoading } = useListAuditQuery({
     entity_type: entityType || undefined,
     action: action || undefined,
-    limit: 200,
+    limit: rowsPerPage,
+    offset: page * rowsPerPage,
   });
+  const logs = data?.items ?? [];
 
   return (
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
         <Box>
-          <Typography variant="h4" fontWeight={700}>
+          <Typography variant="h4" fontWeight={600}>
             {t("nav.audit")}
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -68,7 +73,10 @@ export default function AuditPage() {
               select
               label={t("audit.entityType")}
               value={entityType}
-              onChange={(e) => setEntityType(e.target.value)}
+              onChange={(e) => {
+                setEntityType(e.target.value);
+                setPage(0);
+              }}
               sx={{ minWidth: 180 }}
             >
               <MenuItem value="">—</MenuItem>
@@ -82,7 +90,10 @@ export default function AuditPage() {
               label={t("audit.action")}
               placeholder="user.create"
               value={action}
-              onChange={(e) => setAction(e.target.value)}
+              onChange={(e) => {
+                setAction(e.target.value);
+                setPage(0);
+              }}
               sx={{ minWidth: 200 }}
             />
           </Stack>
@@ -128,7 +139,7 @@ export default function AuditPage() {
                 </TableCell>
                 <TableCell>
                   {log.user_id ? (
-                    <Typography variant="body2">#{log.user_id}</Typography>
+                    <Typography variant="body2">{log.user_name ?? `#${log.user_id}`}</Typography>
                   ) : (
                     <Typography variant="caption" color="text.secondary">
                       system
@@ -163,7 +174,7 @@ export default function AuditPage() {
                       variant="caption"
                       sx={{
                         fontFamily: "monospace",
-                        bgcolor: "grey.100",
+                        bgcolor: "background.default",
                         px: 1,
                         py: 0.25,
                         borderRadius: 1,
@@ -183,6 +194,19 @@ export default function AuditPage() {
             ))}
           </TableBody>
         </Table>
+        <TablePagination
+          component="div"
+          count={data?.total ?? 0}
+          page={page}
+          onPageChange={(_e, next) => setPage(next)}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={(e) => {
+            setRowsPerPage(parseInt(e.target.value, 10));
+            setPage(0);
+          }}
+          rowsPerPageOptions={[25, 50, 100, 200]}
+          labelRowsPerPage={t("common.rowsPerPage")}
+        />
       </TableContainer>
     </Box>
   );

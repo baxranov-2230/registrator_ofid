@@ -7,7 +7,6 @@
  */
 
 export const ROLE_REQUEST_BASE: Record<string, string> = {
-  student: "/student/requests",
   registrator: "/registrator/requests",
   staff: "/staff/requests",
   admin: "/admin/requests",
@@ -20,7 +19,6 @@ export function requestPathForRole(role: string): string {
 
 /** Landing route after login, per role. */
 export const ROLE_HOME: Record<string, string> = {
-  student: "/student/requests",
   registrator: "/registrator/inbox",
   staff: "/staff/queue",
   admin: "/dashboard",

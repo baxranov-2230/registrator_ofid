@@ -33,6 +33,7 @@ export interface AuthUser {
   education_type: string | null;
   education_lang: string | null;
   payment_form: string | null;
+  totp_enabled: boolean;
 }
 
 /**

@@ -1,184 +1,75 @@
 import { NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import {
-  Box,
-  Chip,
-  Drawer,
-  List,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
-  Stack,
-  Tooltip,
-  Typography,
-} from "@mui/material";
+import { Avatar, Box, Chip, Drawer, List, ListItemButton, ListItemIcon, ListItemText, Stack, Tooltip, Typography } from "@mui/material";
 import LogoutIcon from "@mui/icons-material/Logout";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 
+import type { AuthUser } from "@/features/auth/authSlice";
 import { isNavActive, navItemsFor } from "@/shared/navItems";
-import { useListNotificationsQuery } from "@/features/notifications/notificationsApi";
+import { useUnreadNotificationCountQuery } from "@/features/notifications/notificationsApi";
+import BrandMark from "@/shared/components/BrandMark";
 
-export const SIDEBAR_WIDTH = 260;
-/** Icons-only rail. Wide enough to keep a 40px target centred. */
+export const SIDEBAR_WIDTH = 275;
 export const SIDEBAR_COLLAPSED_WIDTH = 76;
 
 interface Props {
   role: string;
-  /** Desktop: rail vs full width. Toggled from the AppBar. */
+  user: AuthUser | null;
   collapsed: boolean;
-  /** Mobile: the temporary drawer's open state. */
   mobileOpen: boolean;
   onCloseMobile: () => void;
-  /** Below `md` the drawer floats over the content instead of reserving space. */
   isMobile: boolean;
   onLogout: () => void;
 }
 
-export default function Sidebar({
-  role,
-  collapsed,
-  mobileOpen,
-  onCloseMobile,
-  isMobile,
-  onLogout,
-}: Props) {
+export default function Sidebar({ role, user, collapsed, mobileOpen, onCloseMobile, isMobile, onLogout }: Props) {
   const { t } = useTranslation();
   const location = useLocation();
   const items = navItemsFor(role);
-
-  // Shares the AppShell's cached query, so this adds no extra request.
-  const { data: unread = [] } = useListNotificationsQuery({ unread_only: true, limit: 50 });
-  const unreadCount = unread.length;
-
-  // The rail only ever applies on desktop; inside the mobile drawer there is
-  // room for labels, so it always renders expanded.
+  const { data: unread } = useUnreadNotificationCountQuery();
+  const unreadCount = unread?.count ?? 0;
   const showLabels = isMobile || !collapsed;
   const width = showLabels ? SIDEBAR_WIDTH : SIDEBAR_COLLAPSED_WIDTH;
+  const initials = (user?.full_name || "").split(" ").map((part) => part[0]).slice(0, 2).join("");
 
   const content = (
     <>
-      {/* Solid brand block, so the identity reads as a header rather than a
-          row that happens to sit at the top of the list. */}
-      <Stack
-        direction="row"
-        alignItems="center"
-        spacing={1.5}
-        sx={{
-          px: showLabels ? 2.5 : 0,
-          py: 2.5,
-          minHeight: 96,
-          justifyContent: showLabels ? "flex-start" : "center",
-          background: "linear-gradient(135deg, #1E3A8A 0%, #2547A8 100%)",
-          color: "#fff",
-        }}
-      >
-        <Box
-          sx={{
-            width: 40,
-            height: 40,
-            flexShrink: 0,
-            borderRadius: 2,
-            display: "grid",
-            placeItems: "center",
-            bgcolor: "rgba(255,255,255,.16)",
-            border: "1px solid rgba(255,255,255,.28)",
-            fontWeight: 800,
-            fontSize: 19,
-          }}
-        >
-          R
-        </Box>
-        {showLabels && (
-          <Box sx={{ minWidth: 0 }}>
-            <Typography variant="h6" fontWeight={800} lineHeight={1.15} noWrap>
-              ROYD
-            </Typography>
-            {/* Wraps to two lines rather than truncating — the second half
-                names the operating principle and carries the meaning. */}
-            <Typography
-              variant="caption"
-              sx={{ opacity: 0.82, display: "block", lineHeight: 1.25, fontSize: 11.5, whiteSpace: "pre-line" }}
-            >
-              {t("app.sidebarSubtitle")}
-            </Typography>
-          </Box>
-        )}
+      <Stack component={NavLink} to="/dashboard" onClick={isMobile ? onCloseMobile : undefined} direction="row" alignItems="center" spacing={1.5}
+        sx={{ px: showLabels ? 2.5 : 0, height: 72, flexShrink: 0, justifyContent: showLabels ? "flex-start" : "center", borderBottom: "1px solid", borderColor: "divider", color: "text.primary", textDecoration: "none" }}>
+        <BrandMark size={38} />
+        {showLabels && <Box sx={{ minWidth: 0 }}>
+          <Typography sx={{ fontSize: 26, fontWeight: 700, lineHeight: 1.1, letterSpacing: "-0.6px" }}>ROYD</Typography>
+          <Typography variant="caption" color="text.secondary">{t("app.tagline")}</Typography>
+        </Box>}
       </Stack>
 
-      <Box sx={{ p: showLabels ? 2 : 1, flexGrow: 1, overflowY: "auto", overflowX: "hidden" }}>
-        {showLabels && (
-          <Typography
-            variant="overline"
-            color="text.secondary"
-            sx={{ px: 1.5, fontSize: 11, fontWeight: 600, letterSpacing: 0.8 }}
-          >
-            {t("nav.menu")}
-          </Typography>
-        )}
-        <List sx={{ mt: 0.5 }}>
+      <Box sx={{ px: showLabels ? 2 : 1, pt: 1.5, pb: 1 }}>
+        <Tooltip title={showLabels ? "" : t("nav.profile")} placement="right">
+          <ListItemButton component={NavLink} to="/profile" onClick={isMobile ? onCloseMobile : undefined}
+            sx={{ bgcolor: "background.default", p: showLabels ? 1.25 : 1, minHeight: 64, gap: 1.25, justifyContent: "center", borderRadius: "12px" }}>
+            <Avatar src={user?.image_path || undefined} sx={{ width: 38, height: 38, fontSize: 14, bgcolor: "primary.light", color: "primary.dark", fontWeight: 600 }}>{initials}</Avatar>
+            {showLabels && <>
+              <Box sx={{ minWidth: 0, flex: 1 }}>
+                <Typography variant="body2" fontWeight={600} noWrap>{user?.full_name}</Typography>
+                <Typography variant="caption" color="text.secondary">{t(`role.${role}`)}</Typography>
+              </Box>
+              <ChevronRightIcon sx={{ fontSize: 18, color: "text.secondary" }} />
+            </>}
+          </ListItemButton>
+        </Tooltip>
+      </Box>
+
+      <Box sx={{ px: showLabels ? 2 : 1, py: 1, flexGrow: 1, overflowY: "auto", overflowX: "hidden" }}>
+        <List disablePadding>
           {items.map((item) => {
             const active = isNavActive(location.pathname, item.to, role);
             return (
-              <Tooltip
-                key={item.to}
-                title={showLabels ? "" : t(item.label)}
-                placement="right"
-                disableHoverListener={showLabels}
-              >
-                <ListItemButton
-                  component={NavLink}
-                  to={item.to}
-                  selected={active}
-                  // Tapping a link on mobile must dismiss the overlay, or the
-                  // student lands on the new page with the menu still covering it.
-                  onClick={isMobile ? onCloseMobile : undefined}
-                  sx={{
-                    minHeight: 48,
-                    justifyContent: showLabels ? "flex-start" : "center",
-                    px: showLabels ? 2 : 1.5,
-                    // A left bar marks the active row, so the current page is
-                    // legible even where the tint is subtle.
-                    "&.Mui-selected": {
-                      "&::before": {
-                        content: '""',
-                        position: "absolute",
-                        left: 0,
-                        top: 8,
-                        bottom: 8,
-                        width: 3,
-                        borderRadius: 3,
-                        bgcolor: "primary.main",
-                      },
-                    },
-                  }}
-                >
-                  <ListItemIcon
-                    sx={{
-                      minWidth: showLabels ? 40 : 0,
-                      justifyContent: "center",
-                      color: active ? "primary.main" : "text.secondary",
-                    }}
-                  >
-                    {item.icon}
-                  </ListItemIcon>
-                  {showLabels && (
-                    <ListItemText
-                      primary={t(item.label)}
-                      primaryTypographyProps={{
-                        fontWeight: active ? 700 : 500,
-                        noWrap: true,
-                        fontSize: 15,
-                      }}
-                    />
-                  )}
-                  {/* Unread counter, mirroring the badge in the header. */}
-                  {showLabels && item.to === "/notifications" && unreadCount > 0 && (
-                    <Chip
-                      label={unreadCount > 99 ? "99+" : unreadCount}
-                      size="small"
-                      color="error"
-                      sx={{ height: 20, minWidth: 20, fontSize: 11, fontWeight: 700 }}
-                    />
-                  )}
+              <Tooltip key={item.to} title={showLabels ? "" : t(item.label)} placement="right" disableHoverListener={showLabels}>
+                <ListItemButton component={NavLink} to={item.to} selected={active} onClick={isMobile ? onCloseMobile : undefined}
+                  sx={{ minHeight: 46, mb: 0.75, px: showLabels ? 1.5 : 1, justifyContent: showLabels ? "flex-start" : "center" }}>
+                  <ListItemIcon sx={{ minWidth: showLabels ? 36 : 0, justifyContent: "center", color: active ? "#fff" : "text.secondary", "& svg": { fontSize: 22 } }}>{item.icon}</ListItemIcon>
+                  {showLabels && <ListItemText primary={t(item.label)} primaryTypographyProps={{ fontWeight: active ? 600 : 500, fontSize: 14, noWrap: true }} />}
+                  {showLabels && item.to === "/notifications" && unreadCount > 0 && <Chip label={unreadCount > 99 ? "99+" : unreadCount} size="small" color="error" sx={{ height: 20, fontSize: 11 }} />}
                 </ListItemButton>
               </Tooltip>
             );
@@ -186,84 +77,20 @@ export default function Sidebar({
         </List>
       </Box>
 
-      {/* Logout closes the session, so it is kept apart from navigation. */}
       <Box sx={{ p: showLabels ? 2 : 1, borderTop: "1px solid", borderColor: "divider" }}>
         <Tooltip title={showLabels ? "" : t("auth.logout")} placement="right">
-          <ListItemButton
-            onClick={onLogout}
-            sx={{
-              minHeight: 48,
-              borderRadius: 2,
-              justifyContent: showLabels ? "flex-start" : "center",
-              px: showLabels ? 2 : 1.5,
-              color: "error.main",
-              "&:hover": { bgcolor: "rgba(239,68,68,0.08)" },
-            }}
-          >
-            <ListItemIcon
-              sx={{ minWidth: showLabels ? 40 : 0, justifyContent: "center", color: "error.main" }}
-            >
-              <LogoutIcon />
-            </ListItemIcon>
-            {showLabels && (
-              <ListItemText
-                primary={t("auth.logout")}
-                primaryTypographyProps={{ fontWeight: 600, noWrap: true, fontSize: 15 }}
-              />
-            )}
+          <ListItemButton onClick={onLogout} sx={{ minHeight: 44, px: showLabels ? 1.5 : 1, justifyContent: showLabels ? "flex-start" : "center", color: "text.secondary" }}>
+            <ListItemIcon sx={{ minWidth: showLabels ? 36 : 0, color: "inherit", justifyContent: "center" }}><LogoutIcon sx={{ fontSize: 22 }} /></ListItemIcon>
+            {showLabels && <ListItemText primary={t("auth.logout")} primaryTypographyProps={{ fontSize: 14, fontWeight: 500 }} />}
           </ListItemButton>
         </Tooltip>
       </Box>
     </>
   );
 
-  if (isMobile) {
-    return (
-      <Drawer
-        variant="temporary"
-        open={mobileOpen}
-        onClose={onCloseMobile}
-        // Keeps the menu in the DOM so opening it is instant on a phone.
-        ModalProps={{ keepMounted: true }}
-        sx={{
-          "& .MuiDrawer-paper": {
-            width: SIDEBAR_WIDTH,
-            maxWidth: "85vw",
-            boxSizing: "border-box",
-            backgroundColor: "#FFFFFF",
-          },
-        }}
-      >
-        {content}
-      </Drawer>
-    );
-  }
-
   return (
-    <Drawer
-      variant="permanent"
-      sx={{
-        width,
-        flexShrink: 0,
-        whiteSpace: "nowrap",
-        transition: (theme) =>
-          theme.transitions.create("width", {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.enteringScreen,
-          }),
-        "& .MuiDrawer-paper": {
-          width,
-          boxSizing: "border-box",
-          backgroundColor: "#FFFFFF",
-          overflowX: "hidden",
-          transition: (theme) =>
-            theme.transitions.create("width", {
-              easing: theme.transitions.easing.sharp,
-              duration: theme.transitions.duration.enteringScreen,
-            }),
-        },
-      }}
-    >
+    <Drawer variant={isMobile ? "temporary" : "permanent"} open={isMobile ? mobileOpen : true} onClose={onCloseMobile} ModalProps={isMobile ? { keepMounted: true } : undefined}
+      sx={{ width: isMobile ? undefined : width, flexShrink: 0, "& .MuiDrawer-paper": { width, maxWidth: isMobile ? "85vw" : undefined, boxSizing: "border-box", overflowX: "hidden", transition: (theme) => theme.transitions.create("width", { duration: 180 }) } }}>
       {content}
     </Drawer>
   );

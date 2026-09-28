@@ -169,7 +169,8 @@ nano .env
 | `leadership@royd.uz`   | `lead123`   | Rahbariyat   |
 | `staff1@royd.uz`       | `staff123`  | Xodim        |
 
-Talaba kirishi — haqiqiy HEMIS ID va parol (`student.ndki.uz`).
+Talabalar bu veb-ilovaga kirmaydi: ular murojaatni talabalar platformasi orqali
+yuboradi, u esa ROYD API'siga ulanadi (`docs/INTEGRATION.md`).
 
 ---
 
@@ -285,10 +286,24 @@ sudo certbot --nginx -d royd.ndki.uz
 
 ### Kundalik backup
 ```bash
-# /etc/cron.daily/royd-backup fayliga:
-#!/bin/bash
-docker compose -f /opt/royd/infra/docker-compose.yml --env-file /opt/royd/.env \
-  exec -T postgres pg_dump -U royd royd \
-  | gzip > /var/backups/royd-$(date +%Y%m%d).sql.gz
-find /var/backups -name "royd-*.sql.gz" -mtime +30 -delete
+./deploy.sh --prod backup-cron
 ```
+Har kuni 02:00 da baza va yuklangan fayllar `backups/` ga yoziladi (oxirgi 14
+tasi saqlanadi), log — `backups/backup.log`. Zaxira baza bilan bir diskda
+turmasligi uchun boshqa serverga ham ko'chiring:
+```bash
+ROYD_BACKUP_REMOTE=backup@10.0.0.5:/srv/royd ./deploy.sh --prod backup-cron
+```
+
+### Qo'shimcha sozlamalar (`.env.prod`)
+```env
+# Hamkor (talabalar) platformasiga webhook'lar — docs/INTEGRATION.md
+WEBHOOK_URL=https://talaba.example.uz/hooks/royd
+WEBHOOK_SECRET=<openssl rand -hex 32>
+# Har yili: Ramazon va Qurbon hayit, ko'chirilgan dam olish kunlari
+SLA_HOLIDAYS=2027-03-10,2027-05-17
+# Xatolarni kuzatish (ixtiyoriy)
+SENTRY_DSN=
+```
+`/readyz` — baza va Redis holatini tekshiradi (monitoring uchun, ichki
+tarmoqdan: `docker exec royd_backend curl -s localhost:8000/readyz`).

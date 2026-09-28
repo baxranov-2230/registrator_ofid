@@ -4,7 +4,7 @@ import json
 import logging
 from collections import defaultdict
 
-from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
 from app.core.redis import get_redis
 from app.core.security import decode_token, is_session_active
@@ -25,7 +25,6 @@ class ConnectionManager:
         self._lock = asyncio.Lock()
 
     async def connect(self, user_id: int, ws: WebSocket) -> None:
-        await ws.accept()
         async with self._lock:
             self.connections[user_id].add(ws)
 
@@ -99,24 +98,47 @@ async def stop_pubsub_listener() -> None:
         _listener_task = None
 
 
-@router.websocket("/ws/notifications")
-async def ws_notifications(websocket: WebSocket, token: str = Query(...)):
+#: How long a fresh socket may stay open before it authenticates.
+AUTH_TIMEOUT_SECONDS = 10
+
+
+async def _authenticate(websocket: WebSocket) -> int | None:
+    """Read the access token from the first message: `{"type":"auth","token":...}`.
+
+    The token used to ride in the URL query string, which nginx writes to its
+    access log verbatim — every connection left a live bearer token on disk.
+    A message body is never logged.
+    """
     try:
+        raw = await asyncio.wait_for(websocket.receive_text(), timeout=AUTH_TIMEOUT_SECONDS)
+        message = json.loads(raw)
+        token = message.get("token") if message.get("type") == "auth" else None
+        if not token:
+            return None
         payload = decode_token(token)
     except Exception:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
+        return None
     if payload.get("type") != "access":
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
+        return None
     user_id = int(payload.get("sub", 0))
     if not user_id:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
+        return None
     # Read the idle window without sliding it: an open socket and its keepalive
     # pings are not user activity, so they must not keep a session alive.
     if not await is_session_active(get_redis(), payload.get("sid") or ""):
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return None
+    return user_id
+
+
+@router.websocket("/ws/notifications")
+async def ws_notifications(websocket: WebSocket):
+    await websocket.accept()
+    user_id = await _authenticate(websocket)
+    if user_id is None:
+        # The client may already have gone away while we waited for the auth
+        # message; closing twice raises inside the ASGI server.
+        with contextlib.suppress(Exception):
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
     await manager.connect(user_id, websocket)

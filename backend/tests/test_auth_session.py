@@ -229,9 +229,7 @@ async def test_access_token_rejected_at_refresh_endpoint(client):
     """An access token must not be usable to mint more tokens."""
     tokens = await _login(client)
     client.cookies.clear()
-    resp = await client.post(
-        "/api/v1/auth/refresh", json={"refresh_token": tokens["access_token"]}
-    )
+    resp = await client.post("/api/v1/auth/refresh", json={"refresh_token": tokens["access_token"]})
     assert resp.status_code == 401
 
 

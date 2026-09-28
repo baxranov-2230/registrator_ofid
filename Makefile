@@ -1,4 +1,4 @@
-.PHONY: help up down logs ps migrate seed test lint format backend-shell db-shell clean backup fix-perms
+.PHONY: help up down logs ps migrate seed test lint format backend-shell db-shell clean backup fix-perms openapi
 
 help:
 	@echo "ROYD dev commands:"
@@ -11,6 +11,7 @@ help:
 	@echo "  make lint       — run ruff + eslint"
 	@echo "  make format     — auto-format code"
 	@echo "  make backup     — database + uploads backup"
+	@echo "  make openapi    — regenerate docs/openapi.json for the partner platform"
 	@echo "  make fix-perms  — remove a stale root-owned backend/.venv"
 
 up:
@@ -40,6 +41,11 @@ db-shell:
 backup:
 	./deploy.sh backup
 
+# The partner platform integrates against this file; regenerate it with every
+# API change and send it along with docs/INTEGRATION.md.
+openapi:
+	cd backend && uv run python scripts/export_openapi.py
+
 # The container used to run as root over the bind mount and left backend/.venv
 # root-owned, which broke host-side tooling. Builds no longer do this (the venv
 # lives at /opt/venv), but an existing repo may still have the stale directory.
@@ -55,6 +61,7 @@ fix-perms:
 # No `|| true`: a failing test or lint run must fail the target.
 test:
 	cd backend && uv run pytest -q
+	cd frontend && npm test
 	cd frontend && npm run build
 
 lint:

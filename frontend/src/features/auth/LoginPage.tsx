@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useDispatch } from "react-redux";
 import {
@@ -8,31 +8,29 @@ import {
   Button,
   CircularProgress,
   Collapse,
-  Fade,
   IconButton,
   InputAdornment,
+  Link,
   Stack,
-  Tab,
-  Tabs,
   TextField,
   Typography,
 } from "@mui/material";
 import { keyframes } from "@mui/material/styles";
 import { Visibility, VisibilityOff } from "@mui/icons-material";
 import LoginIcon from "@mui/icons-material/LoginOutlined";
-import SchoolIcon from "@mui/icons-material/SchoolOutlined";
-import BadgeIcon from "@mui/icons-material/BadgeOutlined";
 import BoltIcon from "@mui/icons-material/BoltOutlined";
 import TrackChangesIcon from "@mui/icons-material/TrackChanges";
 import ForumIcon from "@mui/icons-material/ForumOutlined";
 
 import {
-  useExchangeHemisTokenMutation,
+  useLoginSecondFactorMutation,
   useLoginStaffMutation,
+  type LoginResponse,
 } from "@/features/auth/authApi";
 import { tokensReceived } from "@/features/auth/authSlice";
-import { hemisLogin } from "@/features/auth/hemisService";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
+import BrandMark from "@/shared/components/BrandMark";
+import ThemeToggle from "@/shared/components/ThemeToggle";
 
 /* Motion is kept to slow, large-scale movement: it should make the page feel
    alive without competing with the form for attention. */
@@ -65,51 +63,58 @@ export default function LoginPage() {
   const { t } = useTranslation();
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<"staff" | "student">("student");
   const [err, setErr] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
-  const [loginStaff, staffState] = useLoginStaffMutation();
-  const [exchangeHemisToken, exchangeState] = useExchangeHemisTokenMutation();
-  const [studentLoading, setStudentLoading] = useState(false);
+  // Students file requests from a separate platform that talks to our API
+  // directly, so this page only signs in staff accounts.
+  const [loginStaff, passwordState] = useLoginStaffMutation();
+  const [loginSecondFactor, codeState] = useLoginSecondFactorMutation();
+  const loading = passwordState.isLoading || codeState.isLoading;
+  /** Set after a correct password on an account with 2FA on. */
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
 
-  const loading = staffState.isLoading || exchangeState.isLoading || studentLoading;
+  const finish = (res: LoginResponse) => {
+    if (res.mfa_required && res.mfa_token) {
+      setMfaToken(res.mfa_token);
+      return;
+    }
+    if (res.access_token) {
+      dispatch(tokensReceived({ access: res.access_token }));
+      navigate("/");
+    }
+  };
 
   const handleStaff = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErr(null);
     const data = new FormData(e.currentTarget);
     try {
-      const res = await loginStaff({
-        email: String(data.get("email")),
-        password: String(data.get("password")),
-      }).unwrap();
-      dispatch(tokensReceived({ access: res.access_token }));
-      navigate("/");
+      finish(
+        await loginStaff({
+          email: String(data.get("email")),
+          password: String(data.get("password")),
+        }).unwrap(),
+      );
     } catch (e: unknown) {
       setErr(extractError(e) || t("auth.loginFailed"));
     }
   };
 
-  const handleStudent = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleCode = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!mfaToken) return;
     setErr(null);
-    setStudentLoading(true);
     const data = new FormData(e.currentTarget);
     try {
-      // Step 1 — authenticate directly against HEMIS (student.ndki.uz) via Vite proxy
-      const { token: hemisToken } = await hemisLogin(
-        String(data.get("username")),
-        String(data.get("password")),
+      finish(
+        await loginSecondFactor({
+          mfa_token: mfaToken,
+          code: String(data.get("code")).replace(/\s/g, ""),
+        }).unwrap(),
       );
-      // Step 2 — exchange HEMIS token for local JWT (backend validates /me + syncs user)
-      const res = await exchangeHemisToken({ hemis_token: hemisToken }).unwrap();
-      dispatch(tokensReceived({ access: res.access_token }));
-      navigate("/");
     } catch (e: unknown) {
-      setErr(extractError(e) || (e instanceof Error ? e.message : t("auth.loginFailed")));
-    } finally {
-      setStudentLoading(false);
+      setErr(extractError(e) || t("auth.loginFailed"));
     }
   };
 
@@ -149,16 +154,7 @@ export default function LoginPage() {
       sx={{
         py: 1.35,
         fontSize: "1rem",
-        borderRadius: 2.5,
-        background: "linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)",
-        boxShadow: "0 8px 20px rgba(79,70,229,0.28)",
-        transition: "transform .15s, box-shadow .15s",
-        "&:hover": {
-          boxShadow: "0 10px 26px rgba(79,70,229,0.38)",
-          transform: "translateY(-1px)",
-        },
-        "&:active": { transform: "translateY(0)" },
-        "&.Mui-disabled": { background: "#C7D2FE", color: "#fff" },
+        borderRadius: "8px",
       }}
     >
       {loading ? t("auth.submitting") : t("auth.submit")}
@@ -185,8 +181,8 @@ export default function LoginPage() {
           flexDirection: "column",
           justifyContent: "center",
           p: 8,
-          color: "#fff",
-          background: "linear-gradient(135deg, #4338CA 0%, #4F46E5 45%, #7C3AED 100%)",
+          color: "text.primary",
+          background: (theme) => theme.palette.mode === "light" ? "linear-gradient(135deg, #E6F7F5 0%, #F4FFFC 100%)" : "linear-gradient(135deg, #1B3438 0%, #273142 100%)",
         }}
       >
         {/* Slow-drifting blobs give the panel depth without a background image. */}
@@ -199,7 +195,7 @@ export default function LoginPage() {
             top: -160,
             right: -140,
             borderRadius: "50%",
-            background: "radial-gradient(circle, rgba(255,255,255,.22) 0%, transparent 68%)",
+            background: "radial-gradient(circle, rgba(37,161,148,.12) 0%, transparent 68%)",
             animation: `${drift} 16s ease-in-out infinite`,
             "@media (prefers-reduced-motion: reduce)": { animation: "none" },
           }}
@@ -213,7 +209,7 @@ export default function LoginPage() {
             bottom: -140,
             left: -110,
             borderRadius: "50%",
-            background: "radial-gradient(circle, rgba(255,255,255,.16) 0%, transparent 68%)",
+            background: "radial-gradient(circle, rgba(255,122,44,.10) 0%, transparent 68%)",
             animation: `${drift} 20s ease-in-out infinite reverse`,
             "@media (prefers-reduced-motion: reduce)": { animation: "none" },
           }}
@@ -221,24 +217,9 @@ export default function LoginPage() {
 
         <Box sx={{ position: "relative", maxWidth: 520 }}>
           <Stack direction="row" spacing={2} alignItems="center" sx={{ mb: 5, ...rise(0) }}>
-            <Box
-              sx={{
-                width: 52,
-                height: 52,
-                borderRadius: 3,
-                display: "grid",
-                placeItems: "center",
-                fontWeight: 800,
-                fontSize: 24,
-                bgcolor: "rgba(255,255,255,.16)",
-                border: "1px solid rgba(255,255,255,.25)",
-                backdropFilter: "blur(6px)",
-              }}
-            >
-              R
-            </Box>
+            <BrandMark size={52} />
             <Box>
-              <Typography variant="h6" fontWeight={800} lineHeight={1.15}>
+              <Typography variant="h6" fontWeight={600} lineHeight={1.15}>
                 ROYD
               </Typography>
               <Typography variant="caption" sx={{ opacity: 0.85 }}>
@@ -249,8 +230,8 @@ export default function LoginPage() {
 
           <Typography
             variant="h3"
-            fontWeight={800}
-            sx={{ letterSpacing: "-0.03em", lineHeight: 1.12, mb: 2, ...rise(90) }}
+            fontWeight={600}
+            sx={{ fontSize: { md: "2.25rem", lg: "2.75rem" }, lineHeight: 1.25, mb: 2, ...rise(90) }}
           >
             {t("auth.heroTitle")}
           </Typography>
@@ -278,8 +259,10 @@ export default function LoginPage() {
                     borderRadius: 2,
                     display: "grid",
                     placeItems: "center",
-                    bgcolor: "rgba(255,255,255,.14)",
-                    border: "1px solid rgba(255,255,255,.2)",
+                    bgcolor: "background.paper",
+                    color: "primary.main",
+                    border: "1px solid",
+                    borderColor: "divider",
                   }}
                 >
                   {h.icon}
@@ -301,9 +284,11 @@ export default function LoginPage() {
           px: { xs: 2.5, sm: 5, md: 6 },
           py: { xs: 3, md: 5 },
           minWidth: 0,
+          bgcolor: "background.paper",
         }}
       >
-        <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+        <Box sx={{ display: "flex", gap: 1, justifyContent: "flex-end" }}>
+          <ThemeToggle />
           <LanguageSwitcher />
         </Box>
 
@@ -326,23 +311,9 @@ export default function LoginPage() {
             alignItems="center"
             sx={{ display: { md: "none" }, mb: 3, ...rise(0) }}
           >
-            <Box
-              sx={{
-                width: 44,
-                height: 44,
-                borderRadius: 2.5,
-                display: "grid",
-                placeItems: "center",
-                color: "#fff",
-                fontWeight: 800,
-                fontSize: 20,
-                background: "linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)",
-              }}
-            >
-              R
-            </Box>
+            <BrandMark size={44} />
             <Box>
-              <Typography variant="subtitle1" fontWeight={800} lineHeight={1.2}>
+              <Typography variant="subtitle1" fontWeight={600} lineHeight={1.2}>
                 ROYD
               </Typography>
               <Typography variant="caption" color="text.secondary">
@@ -354,7 +325,7 @@ export default function LoginPage() {
           <Box sx={rise(60)}>
             <Typography
               variant="h4"
-              fontWeight={800}
+              fontWeight={600}
               sx={{ letterSpacing: "-0.02em", fontSize: { xs: "1.6rem", sm: "2rem" } }}
             >
               {t("auth.welcome")}
@@ -364,104 +335,67 @@ export default function LoginPage() {
             </Typography>
           </Box>
 
-          <Box sx={rise(130)}>
-            <Tabs
-              value={tab}
-              onChange={(_, v) => {
-                setTab(v);
-                setErr(null);
-              }}
-              variant="fullWidth"
-              sx={{
-                mb: 3,
-                minHeight: 44,
-                p: 0.5,
-                borderRadius: 2.5,
-                bgcolor: "rgba(79,70,229,0.06)",
-                "& .MuiTabs-indicator": {
-                  height: "100%",
-                  borderRadius: 2,
-                  bgcolor: "background.paper",
-                  boxShadow: "0 1px 3px rgba(15,23,42,0.10)",
-                  zIndex: 0,
-                },
-                "& .MuiTab-root": {
-                  minHeight: 38,
-                  zIndex: 1,
-                  borderRadius: 2,
-                  fontWeight: 600,
-                  fontSize: { xs: 13, sm: 14 },
-                  minWidth: 0,
-                  px: { xs: 1, sm: 2 },
-                  transition: "color .2s",
-                  "&.Mui-selected": { color: "primary.main" },
-                  // Below 380px the icon steals the room the label needs and
-                  // the tab wraps to two lines.
-                  "& .MuiTab-iconWrapper": {
-                    display: { xs: "none", sm: "inline-flex" },
-                  },
-                },
-              }}
-            >
-              <Tab
-                icon={<SchoolIcon fontSize="small" />}
-                iconPosition="start"
-                label={t("auth.studentLogin")}
-                value="student"
-              />
-              <Tab
-                icon={<BadgeIcon fontSize="small" />}
-                iconPosition="start"
-                label={t("auth.staffLogin")}
-                value="staff"
-              />
-            </Tabs>
-          </Box>
-
           <Collapse in={Boolean(err)} unmountOnExit>
             <Alert severity="error" onClose={() => setErr(null)} sx={{ mb: 2, borderRadius: 2.5 }}>
               {err}
             </Alert>
           </Collapse>
 
-          {/* Keyed so switching tabs re-runs the fade instead of swapping
-              fields in place, which read as a glitch. */}
-          <Fade in key={tab} timeout={380}>
-            <Box sx={rise(190)}>
-              {tab === "student" ? (
-                <Box component="form" onSubmit={handleStudent}>
-                  <Stack spacing={2.25}>
-                    <TextField
-                      name="username"
-                      label={t("auth.hemisId")}
-                      autoComplete="username"
-                      required
-                      fullWidth
-                      autoFocus
-                    />
-                    {passwordField}
-                    {submitButton}
-                  </Stack>
-                </Box>
-              ) : (
-                <Box component="form" onSubmit={handleStaff}>
-                  <Stack spacing={2.25}>
-                    <TextField
-                      name="email"
-                      label={t("auth.email")}
-                      type="email"
-                      autoComplete="username"
-                      required
-                      fullWidth
-                      autoFocus
-                    />
-                    {passwordField}
-                    {submitButton}
-                  </Stack>
-                </Box>
-              )}
+          {mfaToken ? (
+            <Box component="form" onSubmit={handleCode} sx={rise(0)}>
+              <Stack spacing={2.25}>
+                <Typography variant="body2" color="text.secondary">
+                  {t("auth.mfaHint")}
+                </Typography>
+                <TextField
+                  name="code"
+                  label={t("auth.mfaCode")}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  inputProps={{ maxLength: 8, pattern: "[0-9 ]*" }}
+                  required
+                  fullWidth
+                  autoFocus
+                />
+                {submitButton}
+                <Link
+                  component="button"
+                  type="button"
+                  variant="body2"
+                  onClick={() => {
+                    setMfaToken(null);
+                    setErr(null);
+                  }}
+                >
+                  {t("common.back")}
+                </Link>
+              </Stack>
             </Box>
-          </Fade>
+          ) : (
+            <Box component="form" onSubmit={handleStaff} sx={rise(130)}>
+              <Stack spacing={2.25}>
+                <TextField
+                  name="email"
+                  label={t("auth.email")}
+                  type="email"
+                  autoComplete="username"
+                  required
+                  fullWidth
+                  autoFocus
+                />
+                {passwordField}
+                {submitButton}
+                <Link
+                  component={RouterLink}
+                  to="/forgot-password"
+                  variant="body2"
+                  textAlign="center"
+                >
+                  {t("auth.forgotPassword")}
+                </Link>
+              </Stack>
+            </Box>
+          )}
 
           {/* Seeded credentials are a dev convenience and must never ship to
               a real deployment, so they are stripped from production builds. */}
@@ -472,7 +406,7 @@ export default function LoginPage() {
               textAlign="center"
               sx={{ mt: 3, px: 1.5, py: 1, borderRadius: 2, bgcolor: "action.hover" }}
             >
-              {tab === "student" ? "Dev: STU001 / student1" : "Dev: admin@royd.uz / admin123"}
+              Dev: admin@royd.uz / admin123
             </Typography>
           )}
 

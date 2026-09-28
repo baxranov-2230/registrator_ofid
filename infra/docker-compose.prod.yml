@@ -71,6 +71,15 @@ services:
       STORAGE_DIR: /app/storage/uploads
       # Explicit origins: "*" plus credentials lets any site call the API (B-04).
       CORS_ORIGINS: https://${SERVER_NAME:?required}
+      # Links in emails (password reset, request notices) point here.
+      PUBLIC_BASE_URL: https://${SERVER_NAME}
+      # Partner platform events. Empty URL = webhooks off. The secret must be
+      # 32+ chars; the backend refuses to start otherwise.
+      WEBHOOK_URL: ${WEBHOOK_URL:-}
+      WEBHOOK_SECRET: ${WEBHOOK_SECRET:-}
+      # Ramazon/Qurbon hayit and transferred days off, YYYY-MM-DD, comma-separated.
+      SLA_HOLIDAYS: ${SLA_HOLIDAYS:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
     volumes:
       - backend-storage:/app/storage
     depends_on:

@@ -7,12 +7,11 @@ import { api, API_URL } from "@/shared/api/base";
 const PING_INTERVAL_MS = 25_000;
 const MAX_RECONNECT_DELAY_MS = 30_000;
 
-function socketUrl(token: string): string {
+function socketUrl(): string {
   // API_URL is empty in dev, where Vite proxies /ws to the backend.
   const base = API_URL || window.location.origin;
   const url = new URL("/ws/notifications", base);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-  url.searchParams.set("token", token);
   return url.toString();
 }
 
@@ -42,10 +41,13 @@ export function useNotificationSocket(): void {
     const connect = () => {
       if (closedByUsRef.current) return;
 
-      const ws = new WebSocket(socketUrl(accessToken));
+      const ws = new WebSocket(socketUrl());
       socketRef.current = ws;
 
       ws.onopen = () => {
+        // The token goes in the first message, not the URL: nginx logs URLs,
+        // and a bearer token in an access log is a leaked credential.
+        ws.send(JSON.stringify({ type: "auth", token: accessToken }));
         attemptsRef.current = 0;
         pingTimer = window.setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) ws.send("ping");

@@ -1,19 +1,19 @@
 import type { RequestStatus } from "@/features/requests/requestsApi";
 
 export const STATUS_COLOR: Record<RequestStatus, string> = {
-  new: "#3B82F6",
-  accepted: "#8B5CF6",
-  in_progress: "#F59E0B",
-  completed: "#10B981",
-  rejected: "#EF4444",
-  returned: "#64748B",
+  new: "#2D57FE",
+  accepted: "#A80BE4",
+  in_progress: "#C75B12",
+  completed: "#15803D",
+  rejected: "#DC2626",
+  returned: "#6C757D",
 };
 
 export const PRIORITY_COLOR: Record<string, string> = {
-  low: "#64748B",
-  normal: "#3B82F6",
-  high: "#F59E0B",
-  critical: "#EF4444",
+  low: "#6C757D",
+  normal: "#2D57FE",
+  high: "#C75B12",
+  critical: "#DC2626",
 };
 
 export const STATUS_ORDER: RequestStatus[] = [

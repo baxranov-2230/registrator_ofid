@@ -21,7 +21,8 @@ log = logging.getLogger(__name__)
 # Maps a constraint name fragment to the message the user should see.
 _CONSTRAINT_MESSAGES = {
     "users_email_key": "Bu email allaqachon ro'yxatdan o'tgan",
-    "users_external_student_id_key": "Bu talaba ID allaqachon mavjud",
+    "students_external_student_id_key": "Bu talaba ID allaqachon mavjud",
+    "uq_requests_student_client_ref": "Bu murojaat allaqachon qabul qilingan (takroriy so'rov)",
     "faculties_code_key": "Bu fakultet kodi allaqachon band",
     "faculties_name_key": "Bu nomdagi fakultet allaqachon mavjud",
     "requests_tracking_no_key": "Murojaat raqami to'qnashdi, qayta urinib ko'ring",

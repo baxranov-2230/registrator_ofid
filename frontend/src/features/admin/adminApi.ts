@@ -1,5 +1,6 @@
 import { api } from "@/shared/api/base";
 import type { AuthUser } from "@/features/auth/authSlice";
+import type { Page } from "@/features/requests/requestsApi";
 
 export type Priority = "low" | "normal" | "high" | "critical";
 
@@ -43,6 +44,7 @@ export interface CategoryNode {
 export interface AuditLogOut {
   id: number;
   user_id: number | null;
+  user_name: string | null;
   action: string;
   entity_type: string;
   entity_id: number | null;
@@ -63,15 +65,39 @@ export interface UserCreatePayload {
   department_id?: number | null;
 }
 
+/**
+ * Partial update. A field sent as `null` is cleared; a field left out is left
+ * alone — that is how a faculty binding or a phone number is removed.
+ */
 export interface UserUpdatePayload {
   full_name?: string;
   email?: string;
-  phone?: string;
+  phone?: string | null;
   password?: string;
   role_name?: string;
   faculty_id?: number | null;
   department_id?: number | null;
   is_active?: boolean;
+  /** Switch off the user's second factor, e.g. after a lost phone. */
+  reset_2fa?: boolean;
+}
+
+export interface UserListParams {
+  role?: string;
+  faculty_id?: number;
+  is_active?: boolean;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface AuditListParams {
+  entity_type?: string;
+  entity_id?: number;
+  user_id?: number;
+  action?: string;
+  limit?: number;
+  offset?: number;
 }
 
 export interface FacultyCreatePayload {
@@ -114,15 +140,13 @@ export interface GroupUpdatePayload {
 export const adminApi = api.injectEndpoints({
   endpoints: (build) => ({
     // Users
-    listUsers: build.query<
-      AuthUser[],
-      { role?: string; faculty_id?: number; is_active?: boolean } | void
-    >({
+    // Paginated: the student directory alone runs to thousands of rows.
+    listUsers: build.query<Page<AuthUser>, UserListParams | void>({
       query: (params) => ({ url: "/users", params: params || undefined }),
       providesTags: (res) =>
         res
           ? [
-              ...res.map((u) => ({ type: "User" as const, id: u.id })),
+              ...res.items.map((u) => ({ type: "User" as const, id: u.id })),
               { type: "User" as const, id: "LIST" },
             ]
           : [{ type: "User" as const, id: "LIST" }],
@@ -205,17 +229,7 @@ export const adminApi = api.injectEndpoints({
     }),
 
     // Audit
-    listAudit: build.query<
-      AuditLogOut[],
-      {
-        entity_type?: string;
-        entity_id?: number;
-        user_id?: number;
-        action?: string;
-        limit?: number;
-        offset?: number;
-      } | void
-    >({
+    listAudit: build.query<Page<AuditLogOut>, AuditListParams | void>({
       query: (params) => ({ url: "/admin/audit", params: params || undefined }),
     }),
   }),

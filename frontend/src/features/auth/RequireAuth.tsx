@@ -6,6 +6,7 @@ import { CircularProgress, Box } from "@mui/material";
 import type { RootState } from "@/app/store";
 import { useGetMeQuery } from "@/features/auth/authApi";
 import { userLoaded } from "@/features/auth/authSlice";
+import StaffOnlyNotice from "@/features/auth/StaffOnlyNotice";
 
 function Spinner() {
   return (
@@ -40,6 +41,10 @@ export default function RequireAuth({ roles }: { roles?: string[] }) {
 
   // Authenticated, but the profile needed for the role check is still loading.
   if (!user) return <Spinner />;
+
+  // A student session can still exist (the API issues them to the partner
+  // platform), but this app has nothing for students any more.
+  if (user.role.name === "student") return <StaffOnlyNotice />;
 
   if (roles && !roles.includes(user.role.name)) {
     return <Navigate to="/" replace />;

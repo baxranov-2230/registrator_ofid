@@ -57,7 +57,7 @@ export default function CategoriesPage() {
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
         <Box>
-          <Typography variant="h4" fontWeight={700}>
+          <Typography variant="h4" fontWeight={600}>
             {t("nav.categories")}
           </Typography>
           <Typography variant="body2" color="text.secondary">

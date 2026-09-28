@@ -8,6 +8,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -29,6 +30,9 @@ class RequestStatus:
     ALL = (NEW, ACCEPTED, IN_PROGRESS, COMPLETED, REJECTED, RETURNED)
     OPEN = (NEW, ACCEPTED, IN_PROGRESS, RETURNED)
     CLOSED = (COMPLETED, REJECTED)
+    #: Statuses on which the SLA clock runs. A returned request is waiting on
+    #: the student, so the office cannot be late on it (Reglament 6.3).
+    SLA_RUNNING = (NEW, ACCEPTED, IN_PROGRESS)
 
 
 class Request(Base, TimestampMixin):
@@ -36,6 +40,9 @@ class Request(Base, TimestampMixin):
     __table_args__ = (
         Index("ix_requests_status_created_at", "status", "created_at"),
         Index("ix_requests_sla_deadline", "sla_deadline"),
+        # A retried submission from the partner platform must not create a
+        # second request, so its idempotency key is unique per student.
+        UniqueConstraint("student_id", "client_ref", name="uq_requests_student_client_ref"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -51,6 +58,15 @@ class Request(Base, TimestampMixin):
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
     sla_deadline: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: When the SLA sweep sent each notice. Set once, so the sweep can skip the
+    #: request instead of re-reading its history on every pass.
+    sla_warned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sla_breached_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Set while the request is returned to the student; the deadline is pushed
+    #: out by the paused time when work resumes.
+    sla_paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Idempotency key supplied by the submitting client.
+    client_ref: Mapped[str | None] = mapped_column(String(64))
 
     student: Mapped["User"] = relationship(foreign_keys=[student_id])
     assignee: Mapped["User | None"] = relationship(foreign_keys=[assigned_to])

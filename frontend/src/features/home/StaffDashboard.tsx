@@ -1,371 +1,122 @@
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import {
-  Alert,
-  Box,
-  ButtonBase,
-  Card,
-  CardContent,
-  Chip,
-  LinearProgress,
-  Skeleton,
-  Stack,
-  Typography,
-} from "@mui/material";
-import InboxIcon from "@mui/icons-material/MoveToInbox";
+import { Alert, Box, Card, CardContent, CardHeader, Chip, LinearProgress, Skeleton, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from "@mui/material";
+import InboxIcon from "@mui/icons-material/MoveToInboxOutlined";
 import HourglassIcon from "@mui/icons-material/HourglassEmpty";
 import CheckCircleIcon from "@mui/icons-material/CheckCircleOutline";
 import WarningIcon from "@mui/icons-material/WarningAmber";
 import PeopleIcon from "@mui/icons-material/PeopleAltOutlined";
 import DescriptionIcon from "@mui/icons-material/DescriptionOutlined";
-import SpeedIcon from "@mui/icons-material/SpeedOutlined";
+import CalendarIcon from "@mui/icons-material/CalendarMonthOutlined";
 
 import type { AuthUser } from "@/features/auth/authSlice";
+import { designColors } from "@/app/theme";
 import { formatApiError } from "@/shared/api/errors";
 import { requestPathForRole } from "@/shared/navigation";
 import { useGetDashboardStatsQuery } from "@/features/home/statsApi";
 import { useListRequestsQuery } from "@/features/requests/requestsApi";
-import { STATUS_COLOR } from "@/features/requests/statusMeta";
+import { STATUS_COLOR, STATUS_ORDER } from "@/features/requests/statusMeta";
 import { StatTile, SectionHeader } from "@/features/home/DashboardParts";
 
-/** Where each role's "see everything" list lives. */
 const LIST_PATH: Record<string, string> = {
-  registrator: "/registrator/inbox",
-  staff: "/staff/queue",
-  admin: "/admin/requests",
-  leadership: "/admin/requests",
+  registrator: "/registrator/inbox", staff: "/staff/queue", admin: "/admin/requests", leadership: "/admin/requests",
 };
 
-/**
- * Operational dashboard for every non-student role.
- *
- * Shares the student page's visual language, but answers a different question:
- * not "where is my request?" but "what needs my attention now?". The counters
- * are therefore queue-shaped and each one deep-links into a filtered list.
- */
 export default function StaffDashboard({ user }: { user: AuthUser }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-
   const role = user.role.name;
   const { data: stats, isLoading, error } = useGetDashboardStatsQuery();
-  const { data: recent, isLoading: recentLoading } = useListRequestsQuery({ limit: 6 });
-
-  const firstName = user.full_name?.split(" ")[0] || "";
+  const { data: recent, isLoading: recentLoading, error: recentError } = useListRequestsQuery({ limit: 6 });
   const listPath = LIST_PATH[role] ?? "/admin/requests";
   const detailBase = requestPathForRole(role);
   const isOversight = role === "admin" || role === "leadership";
-
-  const tiles = isOversight
-    ? [
-        {
-          label: t("dashboard.stats.totalUsers"),
-          value: stats?.total_users ?? 0,
-          hint: t("dashboard.stats.total"),
-          icon: <PeopleIcon />,
-          color: "#6366F1",
-          onClick: role === "admin" ? () => navigate("/admin/users") : undefined,
-        },
-        {
-          label: t("dashboard.stats.activeRequests"),
-          value: stats?.open ?? 0,
-          hint: t("dashboard.stats.total"),
-          icon: <DescriptionIcon />,
-          color: "#3B82F6",
-          onClick: () => navigate(listPath),
-        },
-        {
-          label: t("dashboard.stats.completedToday"),
-          value: stats?.completed_today ?? 0,
-          hint: t("dashboard.stats.total"),
-          icon: <CheckCircleIcon />,
-          color: "#10B981",
-        },
-        {
-          label: t("dashboard.stats.slaBreaches"),
-          value: stats?.overdue ?? 0,
-          hint: t("dashboard.stats.unassigned", { count: stats?.unassigned ?? 0 }),
-          icon: <WarningIcon />,
-          color: "#EF4444",
-          onClick: () => navigate(listPath),
-        },
-      ]
-    : [
-        {
-          label: t("dashboard.stats.incoming"),
-          value: stats?.by_status?.new ?? 0,
-          hint: t("dashboard.stats.total"),
-          icon: <InboxIcon />,
-          color: "#3B82F6",
-          onClick: () => navigate(listPath),
-        },
-        {
-          label: t("requests.status.in_progress"),
-          value: stats?.by_status?.in_progress ?? 0,
-          hint: t("dashboard.stats.total"),
-          icon: <HourglassIcon />,
-          color: "#F59E0B",
-          onClick: () => navigate(listPath),
-        },
-        {
-          label: t("dashboard.stats.completedToday"),
-          value: stats?.completed_today ?? 0,
-          hint: t("dashboard.stats.total"),
-          icon: <CheckCircleIcon />,
-          color: "#10B981",
-        },
-        {
-          label: t("dashboard.stats.slaRisk"),
-          value: stats?.overdue ?? 0,
-          hint: t("dashboard.stats.dueSoon", { count: stats?.due_soon ?? 0 }),
-          icon: <WarningIcon />,
-          color: "#EF4444",
-          onClick: () => navigate(listPath),
-        },
-      ];
-
+  const locale = i18n.language.startsWith("ru") ? "ru-RU" : "uz-UZ";
   const sla = stats?.sla_compliance_pct ?? null;
+  const statusTotal = STATUS_ORDER.reduce((sum, status) => sum + (stats?.by_status[status] ?? 0), 0);
+  const openList = () => navigate(listPath);
+  const tiles = [
+    { label: t("dashboard.totalRequests"), value: stats?.total ?? null, hint: t("dashboard.allTime"), icon: <DescriptionIcon />, color: designColors.orange, onClick: openList },
+    { label: t(isOversight ? "dashboard.stats.totalUsers" : "dashboard.stats.incoming"), value: (isOversight ? stats?.total_users : stats?.by_status.new) ?? null, hint: t("dashboard.stats.total"), icon: isOversight ? <PeopleIcon /> : <InboxIcon />, color: designColors.blue, onClick: role === "admin" ? () => navigate("/admin/users") : isOversight ? undefined : openList },
+    { label: t("dashboard.stats.activeRequests"), value: stats?.open ?? null, hint: t("dashboard.inQueue"), icon: <HourglassIcon />, color: designColors.purple, onClick: openList },
+    { label: t("dashboard.stats.createdThisWeek"), value: stats?.created_this_week ?? null, hint: t("dashboard.thisWeek"), icon: <CalendarIcon />, color: designColors.primary, onClick: openList },
+    { label: t("dashboard.stats.completedToday"), value: stats?.completed_today ?? null, hint: t("dashboard.today"), icon: <CheckCircleIcon />, color: designColors.green },
+    { label: t("dashboard.stats.slaBreaches"), value: stats?.overdue ?? null, hint: t("dashboard.stats.dueSoon", { count: stats?.due_soon ?? 0 }), icon: <WarningIcon />, color: designColors.cyan, onClick: openList },
+  ];
 
   return (
     <Box sx={{ width: "100%" }}>
-      {/* ── Hero ─────────────────────────────────────────────────────── */}
-      <Card
-        sx={{
-          mb: 3,
-          background: "linear-gradient(120deg, #F5F8FF 0%, #FFFFFF 55%)",
-        }}
-      >
-        <Stack
-          direction="row"
-          spacing={2}
-          alignItems="center"
-          sx={{ p: { xs: 2.5, md: 3.5 } }}
-        >
-          <Box
-            sx={{
-              width: 56,
-              height: 56,
-              flexShrink: 0,
-              borderRadius: 2.5,
-              display: { xs: "none", sm: "grid" },
-              placeItems: "center",
-              color: "#fff",
-              background: "linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)",
-            }}
-          >
-            <SpeedIcon />
-          </Box>
-          <Box sx={{ minWidth: 0 }}>
-            <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: 1 }}>
-              {t(`role.${role}`).toUpperCase()}
-            </Typography>
-            <Typography
-              variant="h4"
-              fontWeight={800}
-              sx={{ letterSpacing: "-0.02em", fontSize: { xs: "1.5rem", md: "2rem" } }}
-            >
-              {t("dashboard.greeting", { name: firstName })}
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-              {t("dashboard.subtitle")}
-            </Typography>
-          </Box>
+      <Stack direction={{ xs: "column", sm: "row" }} justifyContent="space-between" alignItems={{ sm: "center" }} spacing={1} sx={{ mb: 3 }}>
+        <Box>
+          <Typography variant="h4">{t("nav.dashboard")}</Typography>
+          <Typography color="text.secondary" variant="body2" sx={{ mt: 0.75 }}>{t("dashboard.greeting", { name: user.full_name.split(" ")[0] })} {t("dashboard.overviewSubtitle")}</Typography>
+        </Box>
+        <Stack direction="row" spacing={0.75} alignItems="center" sx={{ color: "text.secondary", flexShrink: 0 }}>
+          <CalendarIcon sx={{ fontSize: 18 }} /><Typography variant="caption">{new Date().toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" })}</Typography>
         </Stack>
-      </Card>
+      </Stack>
+      {error && <Alert severity="error" sx={{ mb: 3 }}>{formatApiError(error, t("dashboard.statsError"))}</Alert>}
 
-      {error && (
-        <Alert severity="error" sx={{ mb: 3 }}>
-          {formatApiError(error, t("dashboard.statsError"))}
-        </Alert>
-      )}
-
-      {/* ── Counters ─────────────────────────────────────────────────── */}
-      <Box
-        sx={{
-          display: "grid",
-          gap: 2,
-          mb: 3,
-          gridTemplateColumns: { xs: "repeat(2, 1fr)", lg: "repeat(4, 1fr)" },
-        }}
-      >
-        {tiles.map((tile) => (
-          <StatTile key={tile.label} loading={isLoading} {...tile} />
-        ))}
-      </Box>
-
-      {/* ── Queue + performance ──────────────────────────────────────── */}
-      <Box
-        sx={{
-          display: "grid",
-          gap: 3,
-          gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 2fr) minmax(0, 1fr)" },
-          alignItems: "start",
-        }}
-      >
+      <Box sx={{ display: "grid", gap: 3, mb: 3, gridTemplateColumns: { xs: "1fr", xl: "minmax(0, 2fr) minmax(280px, 1fr)" } }}>
+        <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { xs: "1fr", sm: "repeat(3, minmax(0, 1fr))" }, "@media (min-width: 380px) and (max-width: 599px)": { gridTemplateColumns: "repeat(2, minmax(0, 1fr))" } }}>
+          {tiles.map((tile) => <StatTile key={tile.label} loading={isLoading} {...tile} />)}
+        </Box>
         <Card>
-          <CardContent sx={{ p: { xs: 2, md: 3 } }}>
-            <SectionHeader
-              title={t("dashboard.recentActivity")}
-              actionLabel={t("common.viewAll")}
-              onAction={() => navigate(listPath)}
-            />
-
-            {recentLoading && (
-              <Stack spacing={1}>
-                {[0, 1, 2].map((i) => (
-                  <Skeleton key={i} variant="rounded" height={56} />
-                ))}
-              </Stack>
-            )}
-
-            {!recentLoading && (recent?.items.length ?? 0) === 0 && (
-              <Box
-                sx={{
-                  py: 6,
-                  textAlign: "center",
-                  border: "2px dashed",
-                  borderColor: "divider",
-                  borderRadius: 3,
-                }}
-              >
-                <Typography variant="body2" color="text.secondary">
-                  {t("dashboard.noActivity")}
-                </Typography>
+          <CardHeader title={t("dashboard.statusOverview")} />
+          <CardContent>
+            {isLoading ? <Stack spacing={2}>{[0, 1, 2, 3].map((n) => <Skeleton key={n} height={40} />)}</Stack> : !stats ? <Typography color="text.secondary">—</Typography> : <>
+              <Box aria-hidden sx={{ display: "flex", gap: 0.5, height: 38, mb: 2.5 }}>
+                {statusTotal > 0 ? STATUS_ORDER.filter((status) => stats.by_status[status] > 0).map((status) => <Box key={status} sx={{ flex: stats.by_status[status], minWidth: 4, bgcolor: STATUS_COLOR[status], borderRadius: "5px" }} />) : <Box sx={{ flex: 1, bgcolor: "background.default", borderRadius: "5px" }} />}
               </Box>
-            )}
-
-            <Stack divider={<Box sx={{ borderTop: "1px solid", borderColor: "divider" }} />}>
-              {recent?.items.map((r) => (
-                <ButtonBase
-                  key={r.id}
-                  onClick={() => navigate(`${detailBase}/${r.id}`)}
-                  sx={{
-                    display: "block",
-                    textAlign: "left",
-                    width: "100%",
-                    px: 1,
-                    py: 1.5,
-                    borderRadius: 2,
-                    "&:hover": { bgcolor: "action.hover" },
-                  }}
-                >
-                  <Stack
-                    direction={{ xs: "column", sm: "row" }}
-                    spacing={1.5}
-                    alignItems={{ xs: "flex-start", sm: "center" }}
-                  >
-                    <Stack direction="row" spacing={1.5} alignItems="center" sx={{ minWidth: 0, width: "100%" }}>
-                    <Box
-                      sx={{
-                        width: 38,
-                        height: 38,
-                        flexShrink: 0,
-                        borderRadius: 2,
-                        display: "grid",
-                        placeItems: "center",
-                        bgcolor: `${STATUS_COLOR[r.status]}14`,
-                        color: STATUS_COLOR[r.status],
-                      }}
-                    >
-                      <DescriptionIcon fontSize="small" />
-                    </Box>
-                    <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-                      <Typography variant="body2" fontWeight={600} noWrap>
-                        {r.title}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" noWrap display="block">
-                        {r.tracking_no} · {new Date(r.created_at).toLocaleDateString()}
-                      </Typography>
-                    </Box>
-                    </Stack>
-                    <Stack direction="row" spacing={1} sx={{ flexShrink: 0, pl: { xs: 6.5, sm: 0 } }}>
-                    {r.is_overdue && (
-                      <Chip
-                        size="small"
-                        color="error"
-                        variant="outlined"
-                        label={t("requests.overdue")}
-                        sx={{ flexShrink: 0 }}
-                      />
-                    )}
-                    <Chip
-                      size="small"
-                      label={t(`requests.status.${r.status}`)}
-                      sx={{
-                        flexShrink: 0,
-                        fontWeight: 600,
-                        bgcolor: `${STATUS_COLOR[r.status]}18`,
-                        color: STATUS_COLOR[r.status],
-                      }}
-                    />
-                    </Stack>
-                  </Stack>
-                </ButtonBase>
-              ))}
-            </Stack>
+              <Stack spacing={1.5}>
+                {STATUS_ORDER.map((status) => <Stack key={status} direction="row" alignItems="center" spacing={1}>
+                  <Box sx={{ width: 10, height: 10, borderRadius: "2px", bgcolor: STATUS_COLOR[status], flexShrink: 0 }} />
+                  <Typography variant="body2" color="text.secondary" sx={{ flexGrow: 1 }}>{t(`requests.status.${status}`)}</Typography>
+                  <Typography variant="body2" fontWeight={600}>{stats.by_status[status] ?? 0}</Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ width: 40, textAlign: "right" }}>{statusTotal ? Math.round((stats.by_status[status] ?? 0) / statusTotal * 100) : 0}%</Typography>
+                </Stack>)}
+              </Stack>
+            </>}
           </CardContent>
         </Card>
+      </Box>
 
+      <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { xs: "1fr", xl: "minmax(0, 2fr) minmax(280px, 1fr)" }, alignItems: "start" }}>
+        <Card sx={{ minWidth: 0 }}>
+          <SectionHeader title={t("dashboard.recentActivity")} actionLabel={t("common.viewAll")} onAction={openList} />
+          {recentError ? <Box sx={{ p: 2.5 }}><Alert severity="error">{formatApiError(recentError, t("common.error"))}</Alert></Box> : <TableContainer sx={{ boxShadow: "none", borderRadius: 0 }}>
+            <Table size="small" aria-label={t("dashboard.recentActivity")}>
+              <TableHead><TableRow><TableCell>{t("requests.title")}</TableCell><TableCell>{t("requests.statusLabel")}</TableCell><TableCell align="right">{t("requests.createdAt")}</TableCell></TableRow></TableHead>
+              <TableBody>
+                {recentLoading && [0, 1, 2, 3].map((n) => <TableRow key={n}><TableCell colSpan={3}><Skeleton height={36} /></TableCell></TableRow>)}
+                {!recentLoading && !recent?.items.length && <TableRow><TableCell colSpan={3} align="center" sx={{ py: 6 }}>{t("dashboard.noActivity")}</TableCell></TableRow>}
+                {recent?.items.map((request) => <TableRow key={request.id} hover>
+                  <TableCell>
+                    <Box component="button" onClick={() => navigate(`${detailBase}/${request.id}`)} sx={{ border: 0, background: "none", p: 0, cursor: "pointer", textAlign: "left", color: "text.primary", font: "inherit", "&:hover": { color: "primary.main" } }}>
+                      <Typography variant="body2" fontWeight={500} sx={{ minWidth: 150 }}>{request.title}</Typography>
+                      <Typography variant="caption" color="text.secondary">{request.tracking_no}</Typography>
+                    </Box>
+                  </TableCell>
+                  <TableCell><Stack spacing={0.5} alignItems="flex-start"><Chip size="small" label={t(`requests.status.${request.status}`)} sx={{ bgcolor: `${STATUS_COLOR[request.status]}15`, color: STATUS_COLOR[request.status] }} />{request.is_overdue && <Typography variant="caption" color="error.main">{t("requests.overdue")}</Typography>}</Stack></TableCell>
+                  <TableCell align="right" sx={{ whiteSpace: "nowrap", color: "text.secondary" }}>{new Date(request.created_at).toLocaleDateString(locale)}</TableCell>
+                </TableRow>)}
+              </TableBody>
+            </Table>
+          </TableContainer>}
+        </Card>
         <Card>
-          <CardContent sx={{ p: { xs: 2, md: 3 } }}>
-            <Typography variant="h6" fontWeight={700} sx={{ fontSize: { xs: "1rem", sm: "1.25rem" }, mb: 2 }}>
-              {t("dashboard.performance")}
-            </Typography>
-
-            <Stack spacing={2.5}>
-              {sla !== null && (
-                <Box>
-                  <Stack direction="row" justifyContent="space-between" mb={0.75}>
-                    <Typography variant="body2" color="text.secondary">
-                      {t("dashboard.stats.slaCompliance")}
-                    </Typography>
-                    <Typography variant="body2" fontWeight={700}>
-                      {sla.toFixed(0)}%
-                    </Typography>
-                  </Stack>
-                  <LinearProgress
-                    variant="determinate"
-                    value={Math.min(100, Math.max(0, sla))}
-                    sx={{
-                      height: 8,
-                      borderRadius: 4,
-                      bgcolor: "rgba(15,23,42,.06)",
-                      "& .MuiLinearProgress-bar": {
-                        borderRadius: 4,
-                        // Compliance is a health signal, so the colour has to
-                        // track the value rather than stay brand-indigo.
-                        bgcolor: sla >= 90 ? "#10B981" : sla >= 70 ? "#F59E0B" : "#EF4444",
-                      },
-                    }}
-                  />
-                </Box>
-              )}
-
-              <MetricRow
-                label={t("dashboard.stats.avgResolution")}
-                value={
-                  stats?.avg_resolution_hours != null
-                    ? t("dashboard.stats.hours", {
-                        count: Math.round(stats.avg_resolution_hours),
-                      })
-                    : "—"
-                }
-              />
-              <MetricRow
-                label={t("dashboard.stats.createdThisWeek")}
-                value={String(stats?.created_this_week ?? 0)}
-              />
-              <MetricRow
-                label={t("dashboard.stats.dueSoonLabel")}
-                value={String(stats?.due_soon ?? 0)}
-              />
-              {isOversight && (
-                <MetricRow
-                  label={t("requests.unassignedOnly")}
-                  value={String(stats?.unassigned ?? 0)}
-                />
-              )}
-            </Stack>
+          <CardHeader title={t("dashboard.performance")} />
+          <CardContent>
+            {isLoading ? <Stack spacing={2}>{[0, 1, 2].map((n) => <Skeleton key={n} height={42} />)}</Stack> : <Stack spacing={2.5}>
+              <Box sx={{ p: 2, bgcolor: "action.hover", borderRadius: "8px" }}>
+                <Typography variant="body2" color="text.secondary">{t("dashboard.stats.slaCompliance")}</Typography>
+                <Typography variant="h3" sx={{ my: 1 }}>{sla === null ? "—" : `${sla.toFixed(0)}%`}</Typography>
+                {sla !== null && <LinearProgress aria-label={t("dashboard.stats.slaCompliance")} variant="determinate" value={Math.max(0, Math.min(100, sla))} color={sla >= 90 ? "primary" : sla >= 70 ? "warning" : "error"} />}
+              </Box>
+              <MetricRow label={t("dashboard.stats.avgResolution")} value={stats?.avg_resolution_hours != null ? t("dashboard.stats.hours", { count: Math.round(stats.avg_resolution_hours) }) : "—"} />
+              <MetricRow label={t("dashboard.stats.dueSoonLabel")} value={stats ? String(stats.due_soon) : "—"} />
+              {isOversight && <MetricRow label={t("requests.unassignedOnly")} value={stats ? String(stats.unassigned ?? 0) : "—"} />}
+            </Stack>}
           </CardContent>
         </Card>
       </Box>
@@ -374,14 +125,5 @@ export default function StaffDashboard({ user }: { user: AuthUser }) {
 }
 
 function MetricRow({ label, value }: { label: string; value: string }) {
-  return (
-    <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}>
-      <Typography variant="body2" color="text.secondary">
-        {label}
-      </Typography>
-      <Typography variant="body2" fontWeight={700} textAlign="right">
-        {value}
-      </Typography>
-    </Stack>
-  );
+  return <Stack direction="row" justifyContent="space-between" alignItems="center" spacing={2}><Typography variant="body2" color="text.secondary">{label}</Typography><Typography variant="body2" fontWeight={600} textAlign="right">{value}</Typography></Stack>;
 }

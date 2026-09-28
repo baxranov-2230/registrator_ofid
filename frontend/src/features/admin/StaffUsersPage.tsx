@@ -1,3 +1,4 @@
+import PageHeader from "@/shared/components/PageHeader";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -31,7 +32,6 @@ import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/EditOutlined";
 import DeleteIcon from "@mui/icons-material/DeleteOutline";
 import SearchIcon from "@mui/icons-material/Search";
-import BadgeIcon from "@mui/icons-material/BadgeOutlined";
 import WarningIcon from "@mui/icons-material/WarningAmberOutlined";
 
 import type { AuthUser } from "@/features/auth/authSlice";
@@ -56,6 +56,9 @@ import {
  * faculty column matters here in particular: it is what routes incoming
  * requests to a registrator.
  */
+/** The API's page ceiling; far above any university's staff headcount. */
+const STAFF_PAGE = 500;
+
 export default function StaffUsersPage() {
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
@@ -63,16 +66,22 @@ export default function StaffUsersPage() {
   const [dialog, setDialog] = useState<{ mode: "create" | "edit"; user?: AuthUser } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<AuthUser | null>(null);
 
-  // One request per role: the API filters by a single role only.
-  const { data: registrators = [], isLoading: l1, error: e1 } = useListUsersQuery({ role: "registrator" });
-  const { data: staff = [], isLoading: l2, error: e2 } = useListUsersQuery({ role: "staff" });
-  const { data: admins = [], isLoading: l3, error: e3 } = useListUsersQuery({ role: "admin" });
-  const { data: leadership = [], isLoading: l4, error: e4 } = useListUsersQuery({ role: "leadership" });
+  // One request per role: the API filters by a single role only. Staff
+  // headcount is small, so one generous page per role covers everyone and the
+  // page can keep filtering in memory.
+  const r1 = useListUsersQuery({ role: "registrator", limit: STAFF_PAGE });
+  const r2 = useListUsersQuery({ role: "staff", limit: STAFF_PAGE });
+  const r3 = useListUsersQuery({ role: "admin", limit: STAFF_PAGE });
+  const r4 = useListUsersQuery({ role: "leadership", limit: STAFF_PAGE });
+  const registrators = useMemo(() => r1.data?.items ?? [], [r1.data]);
+  const staff = useMemo(() => r2.data?.items ?? [], [r2.data]);
+  const admins = useMemo(() => r3.data?.items ?? [], [r3.data]);
+  const leadership = useMemo(() => r4.data?.items ?? [], [r4.data]);
   const { data: faculties = [] } = useListFacultiesQuery({ include_inactive: true });
   const [deleteUser] = useDeleteUserMutation();
 
-  const isLoading = l1 || l2 || l3 || l4;
-  const error = e1 || e2 || e3 || e4;
+  const isLoading = r1.isLoading || r2.isLoading || r3.isLoading || r4.isLoading;
+  const error = r1.error || r2.error || r3.error || r4.error;
 
   const users = useMemo(
     () => [...registrators, ...staff, ...admins, ...leadership],
@@ -128,49 +137,11 @@ export default function StaffUsersPage() {
 
   return (
     <Box sx={{ width: "100%" }}>
-      <Card sx={{ mb: 3, background: "linear-gradient(120deg, #F5F8FF 0%, #FFFFFF 55%)" }}>
-        <Stack
-          direction={{ xs: "column", sm: "row" }}
-          spacing={2}
-          alignItems={{ sm: "center" }}
-          justifyContent="space-between"
-          sx={{ p: { xs: 2.5, md: 3.5 } }}
-        >
-          <Stack direction="row" spacing={2} alignItems="center" sx={{ minWidth: 0 }}>
-            <Box
-              sx={{
-                width: 52,
-                height: 52,
-                flexShrink: 0,
-                borderRadius: 2.5,
-                display: { xs: "none", sm: "grid" },
-                placeItems: "center",
-                color: "#fff",
-                background: "linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)",
-              }}
-            >
-              <BadgeIcon />
-            </Box>
-            <Box sx={{ minWidth: 0 }}>
-              <Typography variant="h5" fontWeight={800} sx={{ letterSpacing: "-0.02em" }}>
-                {t("users.staffTitle")}
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                {t("users.staffSubtitle")}
-              </Typography>
-            </Box>
-          </Stack>
-          <Button
-            variant="contained"
-            size="large"
-            startIcon={<AddIcon />}
-            onClick={() => setDialog({ mode: "create" })}
-            sx={{ flexShrink: 0 }}
-          >
-            {t("users.newStaff")}
-          </Button>
-        </Stack>
-      </Card>
+      <PageHeader title={t("users.staffTitle")} subtitle={t("users.staffSubtitle")} action={
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialog({ mode: "create" })}>
+          {t("users.newStaff")}
+        </Button>
+      } />
 
       {unboundFaculties.length > 0 && (
         <Alert severity="warning" icon={<WarningIcon />} sx={{ mb: 3 }}>
@@ -191,7 +162,7 @@ export default function StaffUsersPage() {
         {STAFF_ROLES.map((r) => (
           <Card key={r}>
             <CardContent sx={{ p: 2, "&:last-child": { pb: 2 } }}>
-              <Typography variant="h5" fontWeight={800} sx={{ color: ROLE_COLORS[r] }}>
+              <Typography variant="h5" fontWeight={600} sx={{ color: ROLE_COLORS[r] }}>
                 {counts[r] || 0}
               </Typography>
               <Typography variant="caption" color="text.secondary">

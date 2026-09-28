@@ -1,129 +1,35 @@
-import { Box, ButtonBase, Skeleton, Stack, Typography } from "@mui/material";
+import type { ReactNode } from "react";
+import { alpha } from "@mui/material/styles";
+import { Box, Button, Skeleton, Stack, Typography } from "@mui/material";
 import ArrowForwardIcon from "@mui/icons-material/ArrowForward";
 
-/** Tinted stat tile, matching the four counters across the top of the page. */
-export function StatTile({
-  label,
-  value,
-  hint,
-  icon,
-  color,
-  loading,
-  onClick,
-}: {
-  label: string;
-  value: number;
-  hint: string;
-  icon: React.ReactNode;
-  color: string;
-  loading?: boolean;
-  onClick?: () => void;
+export function StatTile({ label, value, hint, icon, color, loading, onClick }: {
+  label: string; value: number | null; hint: string; icon: ReactNode; color: string; loading?: boolean; onClick?: () => void;
 }) {
   return (
-    <ButtonBase
-      onClick={onClick}
-      disabled={!onClick}
-      sx={{
-        display: "block",
-        textAlign: "left",
-        width: "100%",
-        height: "100%",
-        borderRadius: 3,
-        border: "1px solid",
-        borderColor: "divider",
-        bgcolor: "background.paper",
-        p: { xs: 1.75, sm: 2.5 },
-        transition: "border-color .15s, box-shadow .15s, transform .15s",
-        "&:hover": onClick
-          ? {
-              borderColor: color,
-              boxShadow: `0 6px 18px ${color}22`,
-              transform: "translateY(-2px)",
-            }
-          : undefined,
-        "&.Mui-focusVisible": { outline: "2px solid", outlineColor: color, outlineOffset: 2 },
-      }}
-    >
-      <Stack
-        direction={{ xs: "column", sm: "row" }}
-        spacing={{ xs: 1, sm: 2 }}
-        alignItems={{ xs: "flex-start", sm: "center" }}
-      >
-        <Box
-          sx={{
-            width: { xs: 40, sm: 52 },
-            height: { xs: 40, sm: 52 },
-            flexShrink: 0,
-            borderRadius: 2.5,
-            display: "grid",
-            placeItems: "center",
-            bgcolor: `${color}14`,
-            color,
-          }}
-        >
-          {icon}
-        </Box>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography variant="caption" color="text.secondary" noWrap display="block">
-            {label}
-          </Typography>
-          {loading ? (
-            <Skeleton width={40} height={36} />
-          ) : (
-            <Typography variant="h5" fontWeight={800} lineHeight={1.2}>
-              {value}
-            </Typography>
-          )}
-          <Typography variant="caption" color="text.disabled" noWrap display="block">
-            {hint}
-          </Typography>
-        </Box>
+    <Box component={onClick ? "button" : "div"} onClick={onClick} type={onClick ? "button" : undefined}
+      sx={{ display: "flex", flexDirection: "column", textAlign: "left", fontFamily: "inherit", width: "100%", minWidth: 0, minHeight: 170, border: 0, borderRadius: "8px", p: 2.5, color: "text.primary", cursor: onClick ? "pointer" : "default",
+        background: (theme) => `linear-gradient(120deg, ${theme.palette.background.paper}, ${alpha(color, theme.palette.mode === "dark" ? 0.17 : 0.1)})`,
+        boxShadow: "0 4px 30px rgba(46,45,116,0.05)", transition: "box-shadow .15s ease",
+        "&:hover": onClick ? { boxShadow: `0 6px 24px ${alpha(color, 0.16)}` } : undefined,
+        "&:focus-visible": { outline: "3px solid", outlineColor: "primary.main", outlineOffset: 3 },
+      }}>
+      <Stack direction="row" alignItems="center" spacing={1.5} sx={{ mb: 2 }}>
+        <Box sx={{ width: 44, height: 44, flexShrink: 0, borderRadius: "50%", bgcolor: color, color: "#fff", display: "grid", placeItems: "center" }}>{icon}</Box>
+        <Typography variant="body2" fontWeight={500}>{label}</Typography>
       </Stack>
-    </ButtonBase>
+      {loading ? <Skeleton width={70} height={32} /> : <Typography variant="h4" fontWeight={600} sx={{ fontVariantNumeric: "tabular-nums" }}>{value === null ? "—" : value.toLocaleString()}</Typography>}
+      <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: "block" }}>{hint}</Typography>
+    </Box>
   );
 }
 
-/** Section title with a "view all" affordance on the right. */
-export function SectionHeader({
-  title,
-  actionLabel,
-  onAction,
-}: {
-  title: string;
-  actionLabel: string;
-  onAction: () => void;
-}) {
+export function SectionHeader({ title, actionLabel, onAction }: { title: string; actionLabel: string; onAction: () => void }) {
   return (
-    <Stack
-      direction="row"
-      alignItems="center"
-      justifyContent="space-between"
-      spacing={1}
-      sx={{ mb: 2 }}
-    >
-      <Typography
-        variant="h6"
-        fontWeight={700}
-        sx={{ fontSize: { xs: "1rem", sm: "1.25rem" }, minWidth: 0 }}
-      >
-        {title}
-      </Typography>
-      <ButtonBase
-        onClick={onAction}
-        sx={{
-          borderRadius: 1.5,
-          px: 1,
-          py: 0.5,
-          color: "primary.main",
-          fontWeight: 600,
-          fontSize: 14,
-          gap: 0.5,
-          flexShrink: 0,
-        }}
-      >
-        {actionLabel}
-        <ArrowForwardIcon sx={{ fontSize: 16 }} />
-      </ButtonBase>
+    <Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1}
+      sx={{ px: 2.5, py: 1.75, borderBottom: "1px solid", borderColor: "divider" }}>
+      <Typography variant="h6">{title}</Typography>
+      <Button onClick={onAction} size="small" endIcon={<ArrowForwardIcon sx={{ fontSize: 16 }} />} sx={{ flexShrink: 0 }}>{actionLabel}</Button>
     </Stack>
   );
 }

@@ -58,7 +58,7 @@ export default function GroupsPage() {
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
         <Box>
-          <Typography variant="h4" fontWeight={700}>
+          <Typography variant="h4" fontWeight={600}>
             {t("groups.title")}
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -80,7 +80,7 @@ export default function GroupsPage() {
                   width: 40,
                   height: 40,
                   borderRadius: 2,
-                  bgcolor: "primary.main" + "15",
+                  bgcolor: "action.selected",
                   color: "primary.main",
                   display: "flex",
                   alignItems: "center",
@@ -179,7 +179,7 @@ export default function GroupsPage() {
                         width: 36,
                         height: 36,
                         borderRadius: 1.5,
-                        bgcolor: "primary.main" + "10",
+                        bgcolor: "action.hover",
                         color: "primary.main",
                         display: "flex",
                         alignItems: "center",

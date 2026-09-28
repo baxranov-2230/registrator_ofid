@@ -1,6 +1,8 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import LoginPage from "@/features/auth/LoginPage";
+import ForgotPasswordPage from "@/features/auth/ForgotPasswordPage";
+import ResetPasswordPage from "@/features/auth/ResetPasswordPage";
 import ProfilePage from "@/features/auth/ProfilePage";
 import RequireAuth from "@/features/auth/RequireAuth";
 import AppShell from "@/shared/components/AppShell";
@@ -13,18 +15,22 @@ import GroupsPage from "@/features/admin/GroupsPage";
 import CategoriesPage from "@/features/admin/CategoriesPage";
 import AuditPage from "@/features/admin/AuditPage";
 import NotificationsPage from "@/features/notifications/NotificationsPage";
-import NewRequestPage from "@/features/requests/NewRequestPage";
-import MyRequestsPage from "@/features/requests/MyRequestsPage";
 import RequestDetailPage from "@/features/requests/RequestDetailPage";
 import RegistratorInboxPage from "@/features/requests/RegistratorInboxPage";
 import StaffQueuePage from "@/features/requests/StaffQueuePage";
 import AllRequestsPage from "@/features/requests/AllRequestsPage";
+import ReportsPage from "@/features/reports/ReportsPage";
 
 // Route guards mirror the backend's role matrix (app/models/role.py). They are
 // a UX affordance only — the API re-checks every request — but they must not
 // promise access the server will refuse (A-02).
+//
+// There are no student routes: students file and follow requests on the
+// partner platform, which uses the API directly. This app is for staff.
 export const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
+  { path: "/forgot-password", element: <ForgotPasswordPage /> },
+  { path: "/reset-password", element: <ResetPasswordPage /> },
   {
     element: <RequireAuth />,
     children: [
@@ -35,14 +41,6 @@ export const router = createBrowserRouter([
           { path: "/dashboard", element: <Dashboard /> },
           { path: "/profile", element: <ProfilePage /> },
           { path: "/notifications", element: <NotificationsPage /> },
-          {
-            element: <RequireAuth roles={["student"]} />,
-            children: [
-              { path: "/student/requests", element: <MyRequestsPage /> },
-              { path: "/student/requests/new", element: <NewRequestPage /> },
-              { path: "/student/requests/:id", element: <RequestDetailPage /> },
-            ],
-          },
           {
             element: <RequireAuth roles={["registrator", "admin"]} />,
             children: [
@@ -66,6 +64,7 @@ export const router = createBrowserRouter([
               { path: "/admin/requests", element: <AllRequestsPage /> },
               { path: "/admin/requests/:id", element: <RequestDetailPage /> },
               { path: "/admin/audit", element: <AuditPage /> },
+              { path: "/admin/reports", element: <ReportsPage /> },
             ],
           },
           {

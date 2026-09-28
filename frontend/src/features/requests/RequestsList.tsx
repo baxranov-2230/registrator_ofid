@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
+import { useSelector } from "react-redux";
 import {
   Alert,
   Box,
@@ -24,6 +25,7 @@ import {
 } from "@mui/material";
 import SearchIcon from "@mui/icons-material/Search";
 
+import type { RootState } from "@/app/store";
 import type { RequestListParams, RequestStatus } from "@/features/requests/requestsApi";
 import {
   useListAssigneesQuery,
@@ -37,8 +39,10 @@ interface Props {
   subtitle: string;
   detailBasePath: string;
   showAssignee?: boolean;
-  /** Offer the extra "unassigned / overdue" filter — triage views only. */
+  /** Offer the extra "mine / unassigned / overdue" filter — triage views only. */
   triageFilters?: boolean;
+  /** Lens selected on first render, e.g. "mine" for a registrator's inbox. */
+  defaultLens?: "" | "mine" | "unassigned" | "overdue";
   emptyHint?: string;
 }
 
@@ -58,15 +62,17 @@ export default function RequestsList({
   detailBasePath,
   showAssignee,
   triageFilters,
+  defaultLens = "",
   emptyHint,
 }: Props) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const currentUserId = useSelector((s: RootState) => s.auth.user?.id);
 
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<string>("");
-  /** "" | "unassigned" | "overdue" — one extra triage lens at a time. */
-  const [lens, setLens] = useState<string>("");
+  /** "" | "mine" | "unassigned" | "overdue" — one extra triage lens at a time. */
+  const [lens, setLens] = useState<string>(defaultLens);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(25);
 
@@ -81,6 +87,7 @@ export default function RequestsList({
     ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
     ...(lens === "overdue" ? { overdue: true } : {}),
     ...(lens === "unassigned" ? { unassigned: true } : {}),
+    ...(lens === "mine" && currentUserId ? { assigned_to: currentUserId } : {}),
   };
 
   const { data, isLoading, isFetching, error } = useListRequestsQuery(params);
@@ -102,7 +109,7 @@ export default function RequestsList({
     <Box>
       <Stack direction="row" justifyContent="space-between" alignItems="center" mb={3}>
         <Box>
-          <Typography variant="h4" fontWeight={700}>
+          <Typography variant="h4" fontWeight={600}>
             {title}
           </Typography>
           <Typography variant="body2" color="text.secondary">
@@ -153,6 +160,7 @@ export default function RequestsList({
                 sx={{ minWidth: 200 }}
               >
                 <MenuItem value="">{t("requests.filterAll")}</MenuItem>
+                <MenuItem value="mine">{t("requests.assignedToMe")}</MenuItem>
                 <MenuItem value="unassigned">{t("requests.unassignedOnly")}</MenuItem>
                 <MenuItem value="overdue">{t("requests.overdueOnly")}</MenuItem>
               </TextField>
@@ -263,6 +271,9 @@ export default function RequestsList({
                         variant="outlined"
                         label={t("requests.overdue")}
                       />
+                    )}
+                    {r.sla_paused_at && (
+                      <Chip size="small" variant="outlined" label={t("requests.slaPaused")} />
                     )}
                   </TableCell>
                 </TableRow>

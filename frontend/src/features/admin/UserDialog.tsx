@@ -50,6 +50,7 @@ export function UserDialog({
     role_name: user?.role.name || defaultRole,
     faculty_id: user?.faculty_id ? String(user.faculty_id) : "",
     is_active: user?.is_active ?? true,
+    reset_2fa: false,
   });
   const [err, setErr] = useState<string | null>(null);
 
@@ -77,11 +78,13 @@ export function UserDialog({
           data: {
             full_name: form.full_name,
             email: form.email,
-            phone: form.phone || undefined,
+            // null clears the field; the server tells it apart from "unchanged".
+            phone: form.phone || null,
             role_name: form.role_name,
             faculty_id: form.faculty_id ? Number(form.faculty_id) : null,
             is_active: form.is_active,
             ...(form.password ? { password: form.password } : {}),
+            ...(form.reset_2fa ? { reset_2fa: true } : {}),
           },
         }).unwrap();
       }
@@ -130,7 +133,11 @@ export function UserDialog({
               onChange={set("password")}
               required={mode === "create"}
               fullWidth
-              helperText={mode === "edit" ? t("users.form.passwordHint") : ""}
+              helperText={
+                mode === "edit"
+                  ? `${t("users.form.passwordHint")} ${t("auth.passwordRules")}`
+                  : t("auth.passwordRules")
+              }
             />
             <TextField
               select
@@ -167,6 +174,15 @@ export function UserDialog({
                   onChange={(e) => setForm((f) => ({ ...f, is_active: e.target.checked }))}
                 />
                 <Typography variant="body2">{t("users.form.active")}</Typography>
+              </Stack>
+            )}
+            {mode === "edit" && user?.totp_enabled && (
+              <Stack direction="row" alignItems="center" spacing={1}>
+                <Switch
+                  checked={form.reset_2fa}
+                  onChange={(e) => setForm((f) => ({ ...f, reset_2fa: e.target.checked }))}
+                />
+                <Typography variant="body2">{t("users.form.reset2fa")}</Typography>
               </Stack>
             )}
           </Stack>

@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 
 # Auth endpoints carry their own dedicated brute-force counters (B-05); the
 # health probe must never be throttled or the container is marked unhealthy.
-_EXEMPT_PATHS = ("/healthz", "/api/docs", "/api/redoc", "/api/openapi.json")
+_EXEMPT_PATHS = ("/healthz", "/readyz", "/api/docs", "/api/redoc", "/api/openapi.json")
 _WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 

@@ -1,5 +1,5 @@
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from fastapi import HTTPException, status
 from redis.asyncio import Redis
@@ -11,7 +11,9 @@ from app.models import Message, Request, RequestCategory, RequestHistory, User
 from app.models.request import RequestStatus
 from app.models.role import Role
 from app.services.catalog_service import resolve_service
+from app.services.labels import status_label
 from app.services.routing_service import resolve_assignee_for_student
+from app.services.sla_calendar import add_working_time, sla_deadline_from, working_time_between
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +34,33 @@ _ALLOWED_TRANSITIONS: dict[str, set[str]] = {
     RequestStatus.COMPLETED: set(),
     RequestStatus.REJECTED: set(),
 }
+
+#: Transitions that must say why. A returned student has to know what to fix,
+#: a rejected one why (Reglament 6.2).
+_COMMENT_REQUIRED = {RequestStatus.RETURNED, RequestStatus.REJECTED}
+
+
+def _aware(moment: datetime) -> datetime:
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
+def assert_open(req: Request) -> None:
+    """Refuse changes to a request that has been completed or rejected."""
+    if req.status in RequestStatus.CLOSED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Murojaat yopilgan, unga o'zgartirish kiritib bo'lmaydi",
+        )
+
+
+async def find_by_client_ref(db: AsyncSession, student_id: int, client_ref: str) -> Request | None:
+    return (
+        await db.execute(
+            select(Request).where(
+                Request.student_id == student_id, Request.client_ref == client_ref
+            )
+        )
+    ).scalar_one_or_none()
 
 
 async def generate_tracking_no(db: AsyncSession, redis: Redis) -> str:
@@ -88,6 +117,7 @@ async def create_request(
     title: str,
     description: str,
     service_type_id: int | None = None,
+    client_ref: str | None = None,
 ) -> Request:
     category = await resolve_service(db, service_type_id=service_type_id, service_id=category_id)
 
@@ -96,7 +126,8 @@ async def create_request(
     assignee = await resolve_assignee_for_student(db, student)
 
     tracking_no = await generate_tracking_no(db, redis)
-    sla_deadline = datetime.now(UTC) + timedelta(hours=category.sla_hours)
+    # Working days only, per Reglament 7.3.
+    sla_deadline = sla_deadline_from(datetime.now(UTC), category.sla_hours)
 
     req = Request(
         tracking_no=tracking_no,
@@ -110,6 +141,7 @@ async def create_request(
         faculty_id=student.faculty_id,
         department_id=student.department_id,
         sla_deadline=sla_deadline,
+        client_ref=client_ref,
     )
     db.add(req)
     await db.flush()
@@ -192,6 +224,7 @@ async def assign_request(
 ) -> Request:
     if actor.role_name in Role.READ_ONLY:
         raise HTTPException(status_code=403, detail="Rahbariyat roli faqat ko'rish huquqiga ega")
+    assert_open(req)
 
     assignee = await _resolve_assignee(db, assignee_id)
     req.assigned_to = assignee.id
@@ -237,16 +270,23 @@ async def transition_request(
     if new_status not in allowed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"'{req.status}' holatidan '{new_status}' holatiga o'tib bo'lmaydi",
+            detail=(
+                f"'{status_label(req.status)}' holatidan '{status_label(new_status)}' "
+                "holatiga o'tib bo'lmaydi"
+            ),
         )
 
     if role == Role.STAFF and req.assigned_to != actor.id:
         raise HTTPException(status_code=403, detail="Bu sizning murojaatingiz emas")
 
+    if new_status in _COMMENT_REQUIRED and not (comment or "").strip():
+        raise HTTPException(
+            status_code=422,
+            detail="Qaytarish yoki rad etish sababini izohda yozing",
+        )
+
     old = req.status
-    req.status = new_status
-    if new_status in RequestStatus.CLOSED:
-        req.closed_at = datetime.now(UTC)
+    _apply_status(req, new_status)
 
     db.add(
         RequestHistory(
@@ -255,6 +295,58 @@ async def transition_request(
             old_status=old,
             new_status=new_status,
             comment=comment,
+        )
+    )
+    await db.flush()
+    return req
+
+
+def _apply_status(req: Request, new_status: str) -> None:
+    """Change status and keep the SLA clock consistent with it.
+
+    Returning a request hands it to the student, so the clock stops. When work
+    resumes, the deadline moves out by exactly the working time that was left
+    at the pause — the office is not charged for the time the student took.
+    """
+    now = datetime.now(UTC)
+
+    if new_status == RequestStatus.RETURNED and req.sla_paused_at is None:
+        req.sla_paused_at = now
+    elif req.status == RequestStatus.RETURNED and new_status != RequestStatus.RETURNED:
+        if req.sla_paused_at is not None:
+            paused_at = _aware(req.sla_paused_at)
+            remaining = working_time_between(paused_at, _aware(req.sla_deadline))
+            if remaining.total_seconds() > 0:
+                req.sla_deadline = add_working_time(now, remaining)
+                # A new deadline deserves its own warning and breach notices.
+                req.sla_warned_at = None
+                req.sla_breached_at = None
+        req.sla_paused_at = None
+
+    req.status = new_status
+    if new_status in RequestStatus.CLOSED:
+        req.closed_at = now
+
+
+async def resubmit_request(
+    db: AsyncSession, *, req: Request, student: User, comment: str | None
+) -> Request:
+    """The student answers a return and sends the request back to the office."""
+    if req.student_id != student.id:
+        raise HTTPException(status_code=403, detail="Ruxsat yo'q")
+    if req.status != RequestStatus.RETURNED:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Faqat qaytarilgan murojaatni qayta yuborish mumkin",
+        )
+    _apply_status(req, RequestStatus.NEW)
+    db.add(
+        RequestHistory(
+            request_id=req.id,
+            changed_by=student.id,
+            old_status=RequestStatus.RETURNED,
+            new_status=RequestStatus.NEW,
+            comment=comment or "Talaba murojaatni to'ldirib qayta yubordi",
         )
     )
     await db.flush()

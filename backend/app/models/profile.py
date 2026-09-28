@@ -37,13 +37,12 @@ class Student(Base, TimestampMixin):
     )
 
     #: HEMIS student number — the identifier staff look people up by.
-    external_student_id: Mapped[str | None] = mapped_column(
-        String(64), unique=True, index=True
-    )
+    external_student_id: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
     faculty_id: Mapped[int | None] = mapped_column(ForeignKey("faculties.id"), index=True)
     student_group_id: Mapped[int | None] = mapped_column(
         ForeignKey("student_groups.id", ondelete="SET NULL"), index=True
     )
+    department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
 
     birth_date: Mapped[str | None] = mapped_column(String(32))
     gender: Mapped[str | None] = mapped_column(String(16))
@@ -61,9 +60,8 @@ class Student(Base, TimestampMixin):
 
     user: Mapped["User"] = relationship(back_populates="student_profile")
     faculty: Mapped["Faculty | None"] = relationship(foreign_keys=[faculty_id])
-    student_group: Mapped["StudentGroup | None"] = relationship(
-        foreign_keys=[student_group_id]
-    )
+    student_group: Mapped["StudentGroup | None"] = relationship(foreign_keys=[student_group_id])
+    department: Mapped["Department | None"] = relationship(foreign_keys=[department_id])
 
 
 class Employee(Base, TimestampMixin):

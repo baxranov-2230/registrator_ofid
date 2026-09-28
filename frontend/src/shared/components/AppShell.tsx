@@ -28,12 +28,14 @@ import { loggedOut } from "@/features/auth/authSlice";
 import { useLogoutMutation } from "@/features/auth/authApi";
 import { api } from "@/shared/api/base";
 import LanguageSwitcher from "@/shared/components/LanguageSwitcher";
+import ThemeToggle from "@/shared/components/ThemeToggle";
+import NavigationSearch from "@/shared/components/NavigationSearch";
 import Sidebar, {
   SIDEBAR_COLLAPSED_WIDTH,
   SIDEBAR_WIDTH,
 } from "@/shared/components/Sidebar";
 import BottomNav from "@/shared/components/BottomNav";
-import { useListNotificationsQuery } from "@/features/notifications/notificationsApi";
+import { useUnreadNotificationCountQuery } from "@/features/notifications/notificationsApi";
 import { useNotificationSocket } from "@/features/notifications/useNotificationSocket";
 
 const COLLAPSE_KEY = "royd_sidebar_collapsed";
@@ -68,13 +70,12 @@ export default function AppShell() {
 
   // Live push, plus a poll as a fallback if the socket cannot connect.
   useNotificationSocket();
-  const { data: notifications = [] } = useListNotificationsQuery(
-    { unread_only: true, limit: 50 },
-    { pollingInterval: 120_000 },
-  );
-  const unreadCount = notifications.length;
+  const { data: unread } = useUnreadNotificationCountQuery(undefined, {
+    pollingInterval: 120_000,
+  });
+  const unreadCount = unread?.count ?? 0;
 
-  const role = user?.role.name || "student";
+  const role = user?.role.name || "";
 
   const handleLogout = async () => {
     setMenuAnchor(null);
@@ -100,6 +101,7 @@ export default function AppShell() {
     <Box sx={{ display: "flex", minHeight: "100vh", bgcolor: "background.default" }}>
       <Sidebar
         role={role}
+        user={user}
         isMobile={isMobile}
         collapsed={collapsed}
         mobileOpen={mobileOpen}
@@ -123,7 +125,7 @@ export default function AppShell() {
         }}
       >
         <AppBar position="sticky">
-          <Toolbar sx={{ gap: { xs: 1, sm: 2 } }}>
+          <Toolbar sx={{ gap: { xs: 1, sm: 2 }, minHeight: { xs: 64, sm: 72 } }}>
             {/* One control in one place: on mobile it opens the overlay, on
                 desktop it collapses the sidebar to the icon rail. */}
             <Tooltip
@@ -155,20 +157,17 @@ export default function AppShell() {
             </Tooltip>
 
             <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-              <Typography variant="h6" fontWeight={700} noWrap sx={{ fontSize: { xs: "1rem", sm: "1.25rem" } }}>
-                {t(`role.${role}`)}
-              </Typography>
-              <Typography variant="caption" color="text.secondary" noWrap component="div">
-                {user?.full_name}
-              </Typography>
+              <Box sx={{ display: { xs: "none", sm: "block" } }}><NavigationSearch role={role} /></Box>
+              <Typography fontWeight={700} sx={{ display: { xs: "block", sm: "none" } }}>ROYD</Typography>
             </Box>
 
+            <ThemeToggle />
             <LanguageSwitcher />
 
             <IconButton
               color="inherit"
               onClick={() => navigate("/notifications")}
-              sx={{ color: "text.secondary" }}
+              sx={{ color: "text.primary", bgcolor: "background.default", width: 40, height: 40 }}
               aria-label={t("nav.notifications")}
             >
               <Badge color="error" badgeContent={unreadCount} max={99}>
@@ -176,7 +175,7 @@ export default function AppShell() {
               </Badge>
             </IconButton>
 
-            <IconButton onClick={(e) => setMenuAnchor(e.currentTarget)} sx={{ p: 0.5 }}>
+            <IconButton onClick={(e) => setMenuAnchor(e.currentTarget)} aria-label={t("nav.profile")} sx={{ p: 0.5, display: { xs: "none", sm: "inline-flex" } }}>
               <Avatar
                 src={user?.image_path || undefined}
                 sx={{
@@ -184,7 +183,7 @@ export default function AppShell() {
                   height: 36,
                   fontSize: 14,
                   fontWeight: 700,
-                  background: "linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)",
+                  bgcolor: "primary.main",
                 }}
               >
                 {initials}
@@ -208,7 +207,7 @@ export default function AppShell() {
                   {user?.full_name}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" noWrap>
-                  {user?.email || user?.external_student_id}
+                  {user?.email}
                 </Typography>
               </Box>
               <Divider />
@@ -237,7 +236,8 @@ export default function AppShell() {
           component="main"
           sx={{
             flexGrow: 1,
-            p: { xs: 2, md: 4 },
+            p: { xs: 2, md: 3 },
+            width: "100%",
             minWidth: 0,
             // Reserve room for the fixed bottom bar plus the safe-area inset,
             // otherwise the last control on a page sits underneath it.
@@ -245,6 +245,10 @@ export default function AppShell() {
           }}
         >
           <Outlet />
+        </Box>
+        <Box component="footer" sx={{ px: 3, py: 2, display: { xs: "none", md: "flex" }, justifyContent: "space-between", borderTop: "1px solid", borderColor: "divider", bgcolor: "background.paper" }}>
+          <Typography variant="caption" color="text.secondary">© {new Date().getFullYear()} ROYD</Typography>
+          <Typography variant="caption" color="text.secondary">{t("app.tagline")}</Typography>
         </Box>
       </Box>
 

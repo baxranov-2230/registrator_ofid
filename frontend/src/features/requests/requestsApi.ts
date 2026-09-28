@@ -44,10 +44,14 @@ export interface RequestSummary {
   faculty_id: number | null;
   department_id: number | null;
   sla_deadline: string;
+  /** Set while the request is returned to the student: the SLA is paused. */
+  sla_paused_at: string | null;
+  /** Idempotency key the partner platform submitted the request with. */
+  client_ref: string | null;
   created_at: string;
   updated_at: string;
   closed_at: string | null;
-  /** Computed server-side: open and past its SLA deadline. */
+  /** Computed server-side: SLA running and past its deadline. */
   is_overdue: boolean;
 }
 
@@ -96,19 +100,6 @@ export interface RequestDetail extends RequestSummary {
   history: RequestHistoryOut[];
   files: RequestFileOut[];
   messages: MessageOut[];
-}
-
-/**
- * No `assigned_to`: the handler is chosen server-side from the student's
- * faculty, so the student never picks a registrator.
- */
-export interface RequestCreatePayload {
-  /** The chosen leaf service. */
-  category_id: number;
-  /** Its service type — cross-checked server-side against the service. */
-  service_type_id?: number;
-  title: string;
-  description: string;
 }
 
 export interface AssigneeOut {
@@ -162,13 +153,6 @@ export const requestsApi = api.injectEndpoints({
     getRequest: build.query<RequestDetail, number>({
       query: (id) => `/requests/${id}`,
       providesTags: (_r, _e, id) => [{ type: "Request", id }],
-    }),
-    createRequest: build.mutation<RequestDetail, RequestCreatePayload>({
-      query: (body) => ({ url: "/requests", method: "POST", body }),
-      invalidatesTags: [
-        { type: "Request", id: "LIST" },
-        { type: "Stats", id: "DASHBOARD" },
-      ],
     }),
     assignRequest: build.mutation<
       RequestDetail,
@@ -226,6 +210,18 @@ export const requestsApi = api.injectEndpoints({
       },
       invalidatesTags: (_r, _e, { id }) => [{ type: "Request", id }],
     }),
+    /**
+     * Download through the shared base query so an expired access token is
+     * refreshed like on any other call. The blob becomes an object URL here,
+     * because a Blob is not serialisable and cannot sit in the store.
+     */
+    downloadRequestFile: build.mutation<string, { id: number; fileId: number }>({
+      query: ({ id, fileId }) => ({
+        url: `/requests/${id}/files/${fileId}`,
+        responseHandler: async (response: Response) =>
+          response.ok ? URL.createObjectURL(await response.blob()) : response.json(),
+      }),
+    }),
   }),
 });
 
@@ -233,9 +229,9 @@ export const {
   useListAssigneesQuery,
   useListRequestsQuery,
   useGetRequestQuery,
-  useCreateRequestMutation,
   useAssignRequestMutation,
   useTransitionRequestMutation,
   useAddMessageMutation,
   useUploadRequestFileMutation,
+  useDownloadRequestFileMutation,
 } = requestsApi;

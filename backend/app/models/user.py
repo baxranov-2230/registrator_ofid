@@ -30,6 +30,10 @@ class User(Base, TimestampMixin):
     role_id: Mapped[int] = mapped_column(ForeignKey("roles.id"), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: TOTP second factor. The secret is stored once enrolment starts; the
+    #: factor is only enforced after the user proves a code and it is enabled.
+    totp_secret: Mapped[str | None] = mapped_column(String(64))
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     role: Mapped["Role"] = relationship(back_populates="users", lazy="joined")
     #: Exactly one of these is set, decided by `role`.
@@ -66,7 +70,8 @@ class User(Base, TimestampMixin):
 
     @property
     def department_id(self) -> int | None:
-        return self.employee_profile.department_id if self.employee_profile else None
+        profile = self.profile
+        return profile.department_id if profile else None
 
     @property
     def external_student_id(self) -> str | None:

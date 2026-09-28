@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ROYD platformasi — deploy skripti
 # Foydalanish: ./deploy.sh [--prod|--dev] <buyruq>
-# Buyruqlar: init|up|down|restart|update|migrate|seed|logs|status|backup|restore|clean|install-docker|setup-nginx
+# Buyruqlar: init|up|down|restart|update|migrate|seed|logs|status|backup|backup-cron|restore|clean|admin|install-docker|setup-nginx
 
 set -e
 
@@ -428,6 +428,31 @@ cmd_backup() {
   # Keep the last 14 database dumps so the disk cannot fill silently.
   find "$BACKUP_DIR" -name 'royd-db-*.sql.gz' -type f | sort -r | tail -n +15 | xargs -r rm --
   find "$BACKUP_DIR" -name 'royd-files-*.tar.gz' -type f | sort -r | tail -n +15 | xargs -r rm --
+
+  # A backup on the same disk as the database dies with it. When
+  # ROYD_BACKUP_REMOTE is set (rsync target, e.g. backup@10.0.0.5:/srv/royd),
+  # copy the new files off the server too.
+  if [ -n "${ROYD_BACKUP_REMOTE:-}" ]; then
+    log "Zaxira serverdan tashqariga ko'chirilmoqda → $ROYD_BACKUP_REMOTE"
+    rsync -a "$DB_FILE" "$FILES_FILE" "$ROYD_BACKUP_REMOTE/" \
+      && ok "Tashqi nusxa yozildi" \
+      || { err "Tashqi nusxa yozilmadi"; exit 1; }
+  fi
+}
+
+cmd_backup_cron() {
+  # Daily at 02:00, logged next to the dumps. Re-running replaces the entry
+  # instead of adding a second one.
+  require crontab
+  MODE_FLAG=""
+  [ "$MODE" = "prod" ] && MODE_FLAG="--prod "
+  mkdir -p "$BACKUP_DIR"
+  REMOTE_ENV=""
+  [ -n "${ROYD_BACKUP_REMOTE:-}" ] && REMOTE_ENV="ROYD_BACKUP_REMOTE=$ROYD_BACKUP_REMOTE "
+  LINE="0 2 * * * cd $SCRIPT_DIR && ${REMOTE_ENV}./deploy.sh ${MODE_FLAG}backup >> $BACKUP_DIR/backup.log 2>&1 # royd-backup"
+  ( crontab -l 2>/dev/null | grep -v '# royd-backup$' ; echo "$LINE" ) | crontab -
+  ok "Kunlik zaxira o'rnatildi (har kuni 02:00):"
+  echo "  $LINE"
 }
 
 cmd_restore() {
@@ -545,6 +570,8 @@ Boshqaruv:
 
 Zaxira:
   backup            Baza + fayllar zaxirasi (backups/ katalogiga)
+  backup-cron       Har kuni 02:00 da avtomatik zaxira (crontab)
+                    ROYD_BACKUP_REMOTE=user@host:/yo'l bo'lsa, tashqi serverga ham
   restore <fayl>    Bazani zaxiradan tiklash
 
 Xavfli:
@@ -580,6 +607,7 @@ case "${1:-help}" in
   logs)            shift; cmd_logs "$@" ;;
   status|ps)       cmd_status ;;
   backup)          cmd_backup ;;
+  backup-cron)     cmd_backup_cron ;;
   restore)         shift; cmd_restore "$@" ;;
   clean)           cmd_clean ;;
   admin)           cmd_admin "$@" ;;

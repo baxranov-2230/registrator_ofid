@@ -40,7 +40,11 @@ the defaults are not the framework defaults:
 | Registrator (Iqtisodiyot) | `registrator2@royd.uz` | `reg123` |
 | Leadership | `leadership@royd.uz` | `lead123` |
 | Staff | `staff1@royd.uz` | `staff123` |
-| Student | `STU001` (HEMIS) | `student1` |
+| Student | `STU001` (HEMIS mock, API only) | `student1` |
+
+The web app is for staff only. Students file and follow requests on the
+university's student platform, which calls this API — see
+[docs/INTEGRATION.md](docs/INTEGRATION.md).
 
 ## Murojaatlarni avtomatik yo'naltirish
 
@@ -59,34 +63,59 @@ bo'lishi kerak**: Admin → Foydalanuvchilar → xodimni tahrirlab, fakultetini
 tanlang.
 
 These passwords are public, so `make seed` refuses to run when `ENV` is not
-`dev`. On a real deployment create the first administrator with the dedicated
-script instead:
+`dev`. Create a real administrator with:
 
 ```bash
-./create-admin.sh                      # prompts for email, hidden password, name
-./create-admin.sh --prod admin@ndkti.uz  # production stack
-./create-admin.sh --list               # list existing staff accounts
-./create-admin.sh --role registrator r@ndkti.uz
+./create-admin.sh --prod
 ```
 
-It rejects passwords under 12 characters and the published seed passwords, and
-passes credentials through the environment so characters like `$` or a backtick
-survive intact. (`./deploy.sh admin` still works and does the same thing.)
+It asks nothing: the account is `admin@ndkti.uz` and a fresh random password is
+printed at the end. Running it again resets that password.
 
-Student login goes through HEMIS. Set `HEMIS_USE_MOCK=true` in `.env` for the
-offline fixtures — the mock accepts any password for any username, so it must
-never be enabled outside development. The backend refuses to start with it on
-when `ENV != dev`.
+Students authenticate through HEMIS, via the API only
+(`/auth/hemis/exchange`, `/auth/login/hemis`); the login page has no student
+option. Set `HEMIS_USE_MOCK=true` in `.env` for the offline fixtures — the mock
+accepts any password for any username, so it must never be enabled outside
+development. The backend refuses to start with it on when `ENV != dev`.
+
+Staff can change their own password (Profile), reset a forgotten one by email
+(`/forgot-password`), and turn on two-factor sign-in with an authenticator app.
+An administrator can switch off a user's 2FA from the user dialog if they lose
+their phone. Passwords need at least 10 characters with a letter and a digit.
+
+## SLA
+
+Deadlines count **working days only** (Mon–Fri, Asia/Tashkent), per the
+Reglament 7.3: a 48-hour service filed on Friday evening is due on Tuesday
+evening. Fixed public holidays are built in; the moving ones — Ramazon and
+Qurbon hayit, plus any transferred days off — must be listed every year in
+`SLA_HOLIDAYS` (`YYYY-MM-DD,YYYY-MM-DD`).
+
+The clock stops while a request is returned to the student and resumes, with
+the remaining time, when the student resubmits. The assignee is warned 24 hours
+before the deadline; on a breach the faculty's registrators and the
+department head are notified too.
+
+## Partner platform
+
+Every change a student must learn about — created, status changed, message,
+file — is sent to `WEBHOOK_URL` as a signed webhook. Submissions carry an
+`Idempotency-Key`, so a retried POST never files twice. Contract, signature
+check and retry policy: [docs/INTEGRATION.md](docs/INTEGRATION.md); schema:
+`docs/openapi.json` (`make openapi` regenerates it).
+
+Emails and webhooks go through a database outbox and are retried, so a restart
+never loses one.
 
 ## Roles
 
 | Role | Can do |
 |---|---|
-| `student` | create requests, read and message on their own |
+| `student` | API only (partner platform): create requests, read, message and resubmit their own |
 | `staff` | work the requests assigned to them, post internal notes |
 | `registrator` | see everything, assign, return, transition |
 | `admin` | everything, plus users and catalogs |
-| `leadership` | **read-only**: all requests, audit trail, reports |
+| `leadership` | **read-only**: all requests, audit trail, KPI reports |
 
 The matrix lives in `backend/app/models/role.py`; `frontend/src/app/router.tsx`
 and the sidebar mirror it. Change all three together.
@@ -99,7 +128,8 @@ make down        # stop
 make logs        # tail all services
 make migrate     # alembic upgrade head
 make seed        # dev data (dev only)
-make test        # backend pytest + frontend build
+make test        # backend pytest + frontend unit tests + build
+make openapi     # regenerate docs/openapi.json
 make lint        # ruff + eslint + tsc
 make format      # ruff format + prettier
 ```
@@ -109,6 +139,7 @@ Deployment and operations go through `./deploy.sh`:
 ```bash
 ./deploy.sh status              # what is running, and where
 ./deploy.sh backup              # database + uploads → backups/
+./deploy.sh --prod backup-cron  # daily backup at 02:00 (ROYD_BACKUP_REMOTE=... copies off-server)
 ./deploy.sh restore <file>      # restore a database dump
 ./deploy.sh --prod up           # production stack (see DEPLOY.md)
 ```
@@ -125,6 +156,7 @@ Deployment and operations go through `./deploy.sh`:
 
 ```bash
 cd backend  && uv run pytest -q      # integration tests over the real routes
+cd frontend && npm test              # unit tests (vitest)
 cd frontend && npm run build         # typecheck + bundle
 ```
 
@@ -150,6 +182,6 @@ infra/             Docker Compose (dev + prod), Dockerfiles, nginx configs
 ## Roadmap
 
 - **Phase 1 (MVP):** auth, request lifecycle, notifications, SLA tracking, dashboard — done
-- **Phase 2:** KPI reports, Telegram bot, 2FA
+- **Phase 2:** KPI reports and 2FA — done; Telegram bot
 - **Phase 3:** analytics dashboards, AI FAQ assistant
 - **Phase 4:** mobile PWA, LDAP SSO
