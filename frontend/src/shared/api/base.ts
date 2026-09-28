@@ -103,6 +103,7 @@ export const api = createApi({
     "Group",
     "Notification",
     "Stats",
+    "ApiClient",
   ],
   endpoints: () => ({}),
 });

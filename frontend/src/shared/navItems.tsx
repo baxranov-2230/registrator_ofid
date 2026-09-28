@@ -11,6 +11,7 @@ import GroupsIcon from "@mui/icons-material/Groups";
 import AssessmentIcon from "@mui/icons-material/AssessmentOutlined";
 import NotificationsIcon from "@mui/icons-material/NotificationsNoneOutlined";
 import BadgeIcon from "@mui/icons-material/BadgeOutlined";
+import KeyIcon from "@mui/icons-material/VpnKeyOutlined";
 
 export interface NavItem {
   label: string;
@@ -42,6 +43,7 @@ const NAV_BY_ROLE: Record<string, NavItem[]> = {
     { label: "nav.categories", to: "/admin/categories", icon: <CategoryIcon /> },
     { label: "nav.reports", to: "/admin/reports", icon: <AssessmentIcon /> },
     { label: "nav.audit", to: "/admin/audit", icon: <HistoryIcon /> },
+    { label: "nav.apiClients", to: "/admin/api-clients", icon: <KeyIcon /> },
     { label: "nav.notifications", to: "/notifications", icon: <NotificationsIcon /> },
   ],
   // Read-only oversight. The management screens are admin-only on the server,

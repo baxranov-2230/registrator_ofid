@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import hmac
 import secrets
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -6,7 +8,9 @@ from typing import Any
 import bcrypt
 import jwt
 from fastapi import Depends, HTTPException, Request, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.openapi.models import OAuthFlows
+from fastapi.security import OAuth2, OAuth2PasswordBearer, SecurityScopes
+from fastapi.security.utils import get_authorization_scheme_param
 from redis.asyncio import Redis
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +19,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.core.db import get_db
 from app.core.redis import get_redis
-from app.models import User
+from app.models import ApiClient, User
 
 
 async def _redis_dep() -> Redis:
@@ -30,6 +34,15 @@ async def _redis_dep() -> Redis:
 #: Reglament 10.1: bcrypt with at least 12 rounds.
 BCRYPT_ROUNDS = 12
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
+#: Separate scheme for external systems, so Swagger offers the client
+#: credentials flow and lists each endpoint's required scopes.
+client_oauth2_scheme = OAuth2(
+    flows=OAuthFlows(
+        clientCredentials={"tokenUrl": "/api/v1/oauth/token", "scopes": ApiClient.SCOPES}
+    ),
+    scheme_name="ApiClient",
+    auto_error=False,
+)
 
 REFRESH_BLOCKLIST_PREFIX = "refresh:blocked:"
 REFRESH_ACTIVE_PREFIX = "refresh:active:"
@@ -226,6 +239,86 @@ def require_roles(*role_names: str):
         return user
 
     return _check
+
+
+# ── API clients (OAuth2 client_credentials) ─────────────────────────────────
+
+
+def new_client_credentials() -> tuple[str, str]:
+    """A fresh (client_id, client_secret) pair."""
+    return f"royd_{secrets.token_hex(12)}", secrets.token_urlsafe(32)
+
+
+def hash_client_secret(secret: str) -> str:
+    """Digest of a client secret, for storage.
+
+    Not bcrypt: the secret is 256 random bits, not a human password, so there
+    is nothing for key stretching to protect — it would only add a quarter
+    second to every token request.
+    """
+    return hashlib.sha256(secret.encode()).hexdigest()
+
+
+def verify_client_secret(secret: str, secret_hash: str) -> bool:
+    return hmac.compare_digest(hash_client_secret(secret), secret_hash)
+
+
+def create_client_token(client: ApiClient, scopes: list[str]) -> str:
+    token, _ = _create_token(
+        subject=str(client.id),
+        claims={
+            "client_id": client.client_id,
+            "scope": " ".join(scopes),
+            "ver": client.secret_version,
+        },
+        ttl=timedelta(minutes=settings.client_token_ttl_minutes),
+        token_type="client",
+    )
+    return token
+
+
+async def get_current_client(
+    security_scopes: SecurityScopes,
+    authorization: str | None = Depends(client_oauth2_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> ApiClient:
+    """The API client behind a bearer token, checked against the scopes required.
+
+    Use as `Security(get_current_client, scopes=[ApiClient.REQUESTS_READ])`.
+    A user's access token is refused here, and a client token is refused by
+    `get_current_user`, so neither can stand in for the other.
+    """
+    scheme, token = get_authorization_scheme_param(authorization)
+    if not token or scheme.lower() != "bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    payload = decode_token(token)
+    if payload.get("type") != "client":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token type")
+
+    client = await db.get(ApiClient, int(payload.get("sub", 0)))
+    # A deactivated client, or a token minted before the secret was rotated,
+    # stops working now rather than when the token expires.
+    if client is None or not client.is_active or payload.get("ver") != client.secret_version:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Client revoked",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Likewise a scope the admin has since taken away is gone immediately.
+    granted = set(payload.get("scope", "").split()) & set(client.scopes)
+    missing = [scope for scope in security_scopes.scopes if scope not in granted]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Ruxsat yetarli emas: {', '.join(missing)}",
+            headers={"WWW-Authenticate": f'Bearer scope="{security_scopes.scope_str}"'},
+        )
+    return client
 
 
 def client_ip(request: Request) -> str:

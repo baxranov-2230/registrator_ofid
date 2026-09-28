@@ -11,6 +11,10 @@ formatida keladi: `{"detail": "..."}`, validatsiya xatosi (422) esa
 
 ## 1. Autentifikatsiya
 
+> Talabaning HEMIS tokeni bo'lmagan tashqi tizim o'z nomidan ham ishlay oladi.
+> Buning uchun Client ID va Client Secret bilan kiradi, qarang:
+> [6-bo'lim](#6-client-id--client-secret-server-to-server).
+
 ROYD talabani HEMIS orqali taniydi. Hamkor platforma talabaning HEMIS tokenini
 allaqachon oladi, uni ROYD tokeniga almashtiradi:
 
@@ -176,3 +180,107 @@ function verify(rawBody, header, secret) {
   120 o'qish va 30 yozish.
 - Javob `429` bo'lsa, `Retry-After` sarlavhasida ko'rsatilgan vaqtdan keyin
   qayta urinib ko'ring.
+
+## 6. Client ID / Client Secret (server-to-server)
+
+Tashqi tizim talaba sessiyasisiz, **o'z nomidan** ishlaydi (OAuth2
+`client_credentials`). U murojaatni talaba nomidan yaratadi va keyin kuzatadi.
+Talaba ma'lumotlarini tizim o'zi yuboradi va ROYD ularga ishonadi.
+
+### Kalit olish
+
+ROYD administratori **Integratsiyalar** sahifasida (`/admin/api-clients`)
+yangi integratsiya yaratadi va ruxsatlarni tanlaydi. Shundan keyin `client_id`
+va `client_secret` beriladi. **Secret faqat bir marta ko'rsatiladi**, ROYD'da
+uning faqat hash'i saqlanadi. Secret yo'qolsa yoki oshkor bo'lsa, admin
+"Secret'ni yangilash" tugmasini bosadi. Shu zahoti eski secret ham, u bilan
+olingan barcha tokenlar ham ishlamay qoladi. Integratsiyani nofaol qilish ham
+xuddi shunday darhol ta'sir qiladi.
+
+| Scope | Ruxsat |
+|---|---|
+| `requests:read` | O'zi yaratgan murojaatlarni, ularning fayllarini o'qish |
+| `requests:write` | Talaba nomidan murojaat yaratish, xabar, fayl, qayta yuborish |
+| `catalogs:read` | Xizmatlar katalogi |
+
+### Token olish
+
+```http
+POST /api/v1/oauth/token
+Authorization: Basic base64(client_id:client_secret)
+Content-Type: application/x-www-form-urlencoded
+
+grant_type=client_credentials
+```
+
+`client_id` va `client_secret` ni Basic sarlavha o'rniga forma maydonlari
+sifatida ham yuborish mumkin. `scope` (bo'sh joy bilan ajratilgan) berilmasa,
+integratsiyaga ruxsat etilgan barcha scope'lar beriladi.
+
+```json
+{"access_token": "...", "token_type": "bearer", "expires_in": 3600, "scope": "requests:read requests:write catalogs:read"}
+```
+
+Refresh token yo'q: muddat tugaganda (`401`) yangi token so'rang. Xato
+javoblari RFC 6749 formatida keladi: `{"error": "invalid_client",
+"error_description": "..."}`. Mumkin bo'lgan qiymatlar: `invalid_request`,
+`unsupported_grant_type`, `invalid_scope` (400), `invalid_client` (401).
+
+### Endpointlar
+
+Hammasi `Authorization: Bearer <access_token>` bilan chaqiriladi. Integratsiya
+**faqat o'zi yaratgan murojaatlarni** ko'radi, boshqasiga `404` qaytadi.
+
+| So'rov | Scope | Vazifasi |
+|---|---|---|
+| `GET /integration/categories` | `catalogs:read` | Xizmatlar katalogi |
+| `POST /integration/requests` | `requests:write` | Murojaat yaratish (`Idempotency-Key` bilan) |
+| `GET /integration/requests` | `requests:read` | Ro'yxat (`status`, `student_hemis_id`, `limit`, `offset`) |
+| `GET /integration/requests/{id}` | `requests:read` | Tafsilot: holat, tarix, xabarlar, fayllar |
+| `POST /integration/requests/{id}/messages` | `requests:write` | Talaba xabari: `{"content": "..."}` |
+| `POST /integration/requests/{id}/files` | `requests:write` | Talaba fayli (`multipart/form-data`, maydon `upload`) |
+| `GET /integration/requests/{id}/files/{file_id}` | `requests:read` | Faylni yuklab olish |
+| `POST /integration/requests/{id}/resubmit` | `requests:write` | Qaytarilgan murojaatni qayta yuborish |
+
+Scope yetishmasa, `403` qaytadi. Oddiy foydalanuvchi tokeni `/integration`
+da, client tokeni esa `/requests` da ishlamaydi.
+
+### Murojaat yaratish
+
+```http
+POST /api/v1/integration/requests
+Authorization: Bearer <access_token>
+Idempotency-Key: 7f1c2e9a-...
+Content-Type: application/json
+
+{
+  "student": {
+    "hemis_id": "3052211100123",
+    "full_name": "Aliyev Vali",
+    "faculty": {"name": "Axborot texnologiyalari", "hemis_id": "12"},
+    "department": {"name": "Dasturiy injiniring"},          // ixtiyoriy
+    "group": {"name": "IT-21", "hemis_id": "345"},          // ixtiyoriy
+    "email": "vali@example.uz",                             // ixtiyoriy
+    "phone": "+998901234567",                               // ixtiyoriy
+    "specialty": "...", "level": 3, "education_form": "..." // ixtiyoriy
+  },
+  "category_id": 12,
+  "service_type_id": 1,
+  "title": "Ma'lumotnoma kerak",
+  "description": "O'qish joyidan ma'lumotnoma"
+}
+```
+
+- Talaba `hemis_id` bo'yicha topiladi. Topilmasa, yaratiladi. Topilsa, uning
+  ma'lumotlari yuborilganlari bilan yangilanadi.
+- Fakultet, kafedra va guruh avval `hemis_id`, keyin `name` bo'yicha
+  qidiriladi. Topilmasa, yangisi yaratiladi. Murojaat shu fakultetga
+  biriktirilgan registratorga tushadi. Registrator biriktirilmagan bo'lsa,
+  `409` qaytadi va hech narsa saqlanmaydi.
+- Javob kodlari §2 dagidek: `201`, `200` (shu `Idempotency-Key` bilan avval
+  yaratilgan) va `400`. `409` esa registrator topilmaganda yoki
+  `Idempotency-Key` bu talabaning boshqa integratsiya yaratgan murojaatida
+  ishlatilgan bo'lsa qaytadi.
+
+Xabarlar, fayllar va holat o'zgarishlari talaba nomidan yoziladi. Webhook'lar
+(§4) bu murojaatlar uchun ham yuboriladi.

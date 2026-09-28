@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_redis_dep
 from app.core.db import get_db
 from app.core.security import get_current_user, require_roles
-from app.models import Message, RequestFile, Role, User
+from app.models import ApiClient, Message, RequestFile, Role, User
 from app.models import Request as RequestModel
 from app.models.notification import NotificationType
 from app.models.request import RequestStatus
@@ -106,6 +106,189 @@ async def _notify_assigned(db: AsyncSession, req: RequestModel, assignee_id: int
     )
 
 
+# ── Student-side actions ────────────────────────────────────────────────────
+# Shared by the routes below and by the API-client routes in integration.py,
+# which act on the student's behalf. Each one audits, notifies and publishes
+# the webhook event; the caller does the single commit.
+
+
+async def file_request(
+    db: AsyncSession,
+    redis: Redis,
+    *,
+    student: User,
+    data: RequestCreate,
+    client_ref: str | None,
+    api_client: ApiClient | None = None,
+) -> RequestModel:
+    req = await create_request(
+        db,
+        redis,
+        student=student,
+        category_id=data.category_id,
+        service_type_id=data.service_type_id,
+        title=data.title,
+        description=data.description,
+        client_ref=client_ref,
+        api_client_id=api_client.id if api_client else None,
+    )
+    await log_action(
+        db,
+        user_id=student.id,
+        action="request.create",
+        entity_type="request",
+        entity_id=req.id,
+        new_value={
+            "tracking_no": req.tracking_no,
+            "title": req.title,
+            "assigned_to": req.assigned_to,
+            "auto_routed": True,
+            **({"api_client": api_client.client_id} if api_client else {}),
+        },
+    )
+
+    # Routing always yields a handler — creation fails outright otherwise — so
+    # the assignee is notified unconditionally and the request lands on their
+    # dashboard straight away.
+    if req.assigned_to:
+        await _notify_assigned(db, req, req.assigned_to)
+    await events.publish(db, events.REQUEST_CREATED, req)
+    return req
+
+
+async def resubmit_returned(
+    db: AsyncSession, req: RequestModel, student: User, comment: str | None
+) -> None:
+    await resubmit_request(db, req=req, student=student, comment=comment)
+    await log_action(
+        db,
+        user_id=student.id,
+        action="request.resubmit",
+        entity_type="request",
+        entity_id=req.id,
+        old_value={"status": RequestStatus.RETURNED},
+        new_value={"status": req.status},
+    )
+    if req.assigned_to:
+        await _notify_user(
+            db,
+            req.assigned_to,
+            type_=NotificationType.REQUEST_STATUS,
+            title=f"Murojaat qayta yuborildi: {req.tracking_no}",
+            lines=[
+                f"Talaba '{req.title}' murojaatini to'ldirib qayta yubordi.",
+                *([f"Izoh: {comment}"] if comment else []),
+            ],
+            req=req,
+        )
+    await events.publish(
+        db,
+        events.REQUEST_STATUS_CHANGED,
+        req,
+        old_status=RequestStatus.RETURNED,
+        comment=comment,
+    )
+
+
+async def post_message(
+    db: AsyncSession, req: RequestModel, sender: User, *, content: str, is_internal: bool
+) -> MessageOut:
+    msg = Message(
+        request_id=req.id,
+        sender_id=sender.id,
+        content=content.strip(),
+        is_internal=is_internal,
+    )
+    db.add(msg)
+    await db.flush()
+
+    if not is_internal:
+        recipients: set[int] = set()
+        if sender.id != req.student_id:
+            recipients.add(req.student_id)
+        if req.assigned_to and req.assigned_to != sender.id:
+            recipients.add(req.assigned_to)
+        for rid in recipients:
+            await create_notification(
+                db,
+                user_id=rid,
+                type_=NotificationType.REQUEST_MESSAGE,
+                title=f"Yangi xabar: {req.tracking_no}",
+                body=content[:200],
+                payload={"request_id": req.id, "tracking_no": req.tracking_no},
+            )
+        await events.publish(
+            db,
+            events.REQUEST_MESSAGE_CREATED,
+            req,
+            message={
+                "id": msg.id,
+                "content": msg.content,
+                "sender_name": sender.full_name,
+                "sender_role": sender.role_name,
+                "from_student": sender.id == req.student_id,
+            },
+        )
+
+    out = MessageOut.model_validate(msg)
+    # The sender is the caller, so name the author without another round trip.
+    out.sender_name = sender.full_name
+    out.sender_role = sender.role_name
+    return out
+
+
+async def attach_file(
+    db: AsyncSession, req: RequestModel, uploader: User, upload: UploadFile
+) -> RequestFileOut:
+    meta = await save_upload(upload, request_id=req.id, uploader_id=uploader.id)
+    record = RequestFile(request_id=req.id, uploaded_by=uploader.id, **meta)
+    db.add(record)
+    await db.flush()
+    await log_action(
+        db,
+        user_id=uploader.id,
+        action="request.file_upload",
+        entity_type="request",
+        entity_id=req.id,
+        new_value={"file_name": meta["file_name"], "size": meta["file_size"]},
+    )
+    await events.publish(
+        db,
+        events.REQUEST_FILE_ADDED,
+        req,
+        file={
+            "id": record.id,
+            "file_name": record.file_name,
+            "file_size": record.file_size,
+            "mime_type": record.mime_type,
+            "from_student": uploader.id == req.student_id,
+        },
+    )
+    return RequestFileOut.model_validate(record)
+
+
+async def stored_file_response(db: AsyncSession, req: RequestModel, file_id: int) -> FileResponse:
+    f = (
+        await db.execute(
+            select(RequestFile).where(RequestFile.id == file_id, RequestFile.request_id == req.id)
+        )
+    ).scalar_one_or_none()
+    if not f:
+        raise HTTPException(status_code=404, detail="Fayl topilmadi")
+
+    path = resolve_stored_path(f.file_path)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Fayl diskda topilmadi")
+
+    return FileResponse(
+        path,
+        media_type=f.mime_type,
+        filename=f.file_name,
+        # Never let the browser render an upload inline in our own origin.
+        headers={"X-Content-Type-Options": "nosniff", "Content-Disposition": "attachment"},
+    )
+
+
 @router.post("", response_model=RequestDetail, status_code=201)
 async def create(
     data: RequestCreate,
@@ -134,37 +317,7 @@ async def create(
             response.status_code = 200
             return await _detail_for(db, existing.id, user)
 
-    req = await create_request(
-        db,
-        redis,
-        student=user,
-        category_id=data.category_id,
-        service_type_id=data.service_type_id,
-        title=data.title,
-        description=data.description,
-        client_ref=idempotency_key,
-    )
-    await log_action(
-        db,
-        user_id=user.id,
-        action="request.create",
-        entity_type="request",
-        entity_id=req.id,
-        new_value={
-            "tracking_no": req.tracking_no,
-            "title": req.title,
-            "assigned_to": req.assigned_to,
-            "auto_routed": True,
-        },
-    )
-
-    # Routing always yields a handler — creation fails outright otherwise — so
-    # the assignee is notified unconditionally and the request lands on their
-    # dashboard straight away.
-    if req.assigned_to:
-        await _notify_assigned(db, req, req.assigned_to)
-    await events.publish(db, events.REQUEST_CREATED, req)
-
+    req = await file_request(db, redis, student=user, data=data, client_ref=idempotency_key)
     await db.commit()
     return await _detail_for(db, req.id, user)
 
@@ -345,35 +498,7 @@ async def resubmit(
     "done". This moves it back to `new` and restarts the paused SLA clock.
     """
     req = await get_request_for_user(db, request_id, student, with_details=False)
-    await resubmit_request(db, req=req, student=student, comment=data.comment)
-    await log_action(
-        db,
-        user_id=student.id,
-        action="request.resubmit",
-        entity_type="request",
-        entity_id=req.id,
-        old_value={"status": RequestStatus.RETURNED},
-        new_value={"status": req.status},
-    )
-    if req.assigned_to:
-        await _notify_user(
-            db,
-            req.assigned_to,
-            type_=NotificationType.REQUEST_STATUS,
-            title=f"Murojaat qayta yuborildi: {req.tracking_no}",
-            lines=[
-                f"Talaba '{req.title}' murojaatini to'ldirib qayta yubordi.",
-                *([f"Izoh: {data.comment}"] if data.comment else []),
-            ],
-            req=req,
-        )
-    await events.publish(
-        db,
-        events.REQUEST_STATUS_CHANGED,
-        req,
-        old_status=RequestStatus.RETURNED,
-        comment=data.comment,
-    )
+    await resubmit_returned(db, req, student, data.comment)
     await db.commit()
     return await _detail_for(db, req.id, student)
 
@@ -396,49 +521,8 @@ async def add_message(
     if not data.is_internal:
         assert_open(req)
 
-    msg = Message(
-        request_id=req.id,
-        sender_id=user.id,
-        content=data.content.strip(),
-        is_internal=data.is_internal,
-    )
-    db.add(msg)
-    await db.flush()
-
-    if not data.is_internal:
-        recipients: set[int] = set()
-        if user.id != req.student_id:
-            recipients.add(req.student_id)
-        if req.assigned_to and req.assigned_to != user.id:
-            recipients.add(req.assigned_to)
-        for rid in recipients:
-            await create_notification(
-                db,
-                user_id=rid,
-                type_=NotificationType.REQUEST_MESSAGE,
-                title=f"Yangi xabar: {req.tracking_no}",
-                body=data.content[:200],
-                payload={"request_id": req.id, "tracking_no": req.tracking_no},
-            )
-        await events.publish(
-            db,
-            events.REQUEST_MESSAGE_CREATED,
-            req,
-            message={
-                "id": msg.id,
-                "content": msg.content,
-                "sender_name": user.full_name,
-                "sender_role": user.role_name,
-                "from_student": user.id == req.student_id,
-            },
-        )
-
+    out = await post_message(db, req, user, content=data.content, is_internal=data.is_internal)
     await db.commit()
-    await db.refresh(msg)
-    out = MessageOut.model_validate(msg)
-    # The sender is the caller, so name the author without another round trip.
-    out.sender_name = user.full_name
-    out.sender_role = user.role_name
     return out
 
 
@@ -454,33 +538,9 @@ async def upload_file(
         raise HTTPException(status_code=403, detail="Rahbariyat roli faqat ko'rish huquqiga ega")
     assert_open(req)
 
-    meta = await save_upload(upload, request_id=req.id, uploader_id=user.id)
-    record = RequestFile(request_id=req.id, uploaded_by=user.id, **meta)
-    db.add(record)
-    await db.flush()
-    await log_action(
-        db,
-        user_id=user.id,
-        action="request.file_upload",
-        entity_type="request",
-        entity_id=req.id,
-        new_value={"file_name": meta["file_name"], "size": meta["file_size"]},
-    )
-    await events.publish(
-        db,
-        events.REQUEST_FILE_ADDED,
-        req,
-        file={
-            "id": record.id,
-            "file_name": record.file_name,
-            "file_size": record.file_size,
-            "mime_type": record.mime_type,
-            "from_student": user.id == req.student_id,
-        },
-    )
+    out = await attach_file(db, req, user, upload)
     await db.commit()
-    await db.refresh(record)
-    return RequestFileOut.model_validate(record)
+    return out
 
 
 @router.get("/{request_id}/files/{file_id}")
@@ -491,22 +551,4 @@ async def download_file(
     user: User = Depends(get_current_user),
 ):
     req = await get_request_for_user(db, request_id, user, with_details=False)
-    f = (
-        await db.execute(
-            select(RequestFile).where(RequestFile.id == file_id, RequestFile.request_id == req.id)
-        )
-    ).scalar_one_or_none()
-    if not f:
-        raise HTTPException(status_code=404, detail="Fayl topilmadi")
-
-    path = resolve_stored_path(f.file_path)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Fayl diskda topilmadi")
-
-    return FileResponse(
-        path,
-        media_type=f.mime_type,
-        filename=f.file_name,
-        # Never let the browser render an upload inline in our own origin.
-        headers={"X-Content-Type-Options": "nosniff", "Content-Disposition": "attachment"},
-    )
+    return await stored_file_response(db, req, file_id)

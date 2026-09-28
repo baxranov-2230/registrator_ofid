@@ -14,6 +14,7 @@ import FacultiesPage from "@/features/admin/FacultiesPage";
 import GroupsPage from "@/features/admin/GroupsPage";
 import CategoriesPage from "@/features/admin/CategoriesPage";
 import AuditPage from "@/features/admin/AuditPage";
+import ApiClientsPage from "@/features/admin/ApiClientsPage";
 import NotificationsPage from "@/features/notifications/NotificationsPage";
 import RequestDetailPage from "@/features/requests/RequestDetailPage";
 import RegistratorInboxPage from "@/features/requests/RegistratorInboxPage";
@@ -75,6 +76,7 @@ export const router = createBrowserRouter([
               { path: "/admin/categories", element: <CategoriesPage /> },
               { path: "/admin/faculties", element: <FacultiesPage /> },
               { path: "/admin/groups", element: <GroupsPage /> },
+              { path: "/admin/api-clients", element: <ApiClientsPage /> },
             ],
           },
         ],

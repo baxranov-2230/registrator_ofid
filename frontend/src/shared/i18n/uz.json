@@ -21,7 +21,8 @@
     "featureFast": "Murojaatlar fakultet bo'yicha avtomatik taqsimlanadi",
     "featureTrack": "SLA muddatlari ish kunlari bo'yicha nazorat qilinadi",
     "featureChat": "Talaba bilan yozishma va xodimlar uchun ichki eslatmalar",
-    "footerNote": "Namangan davlat konchilik-texnologiya universiteti",
+    "footerNote": "Navoiy davlat konchilik va texnologiyalar universiteti",
+    "staffBadge": "Xodimlar uchun kirish",
     "staffOnlyTitle": "Bu platforma xodimlar uchun",
     "staffOnlyBody": "Talabalar murojaatlarni universitetning talabalar platformasi orqali yuboradi va kuzatadi. Bu yerda talaba uchun bo'lim yo'q.",
     "mfaHint": "Autentifikator ilovasidagi 6 xonali kodni kiriting.",
@@ -66,7 +67,8 @@
     "darkMode": "Qorong'i rejim",
     "lightMode": "Yorug' rejim",
     "searchPages": "Bo'limni qidirish...",
-    "noSearchResults": "Bo'lim topilmadi"
+    "noSearchResults": "Bo'lim topilmadi",
+    "apiClients": "Integratsiyalar"
   },
   "role": {
     "student": "Talaba",
@@ -381,6 +383,44 @@
     "minutesAgo": "{{count}} daqiqa oldin",
     "hoursAgo": "{{count}} soat oldin",
     "daysAgo": "{{count}} kun oldin"
+  },
+  "apiClients": {
+    "subtitle": "Tashqi tizimlar uchun Client ID va Client Secret",
+    "newClient": "Yangi integratsiya",
+    "editClient": "Integratsiyani tahrirlash",
+    "hint": "Tashqi tizim client_id va client_secret'ni POST /api/v1/oauth/token manziliga yuborib token oladi (OAuth2 client_credentials), so'ng /api/v1/integration/... endpointlarini chaqiradi. Batafsil: docs/INTEGRATION.md.",
+    "empty": "Hali integratsiya qo'shilmagan",
+    "columns": {
+      "name": "Nomi",
+      "clientId": "Client ID",
+      "scopes": "Ruxsatlar",
+      "status": "Holati",
+      "lastUsed": "Oxirgi token"
+    },
+    "never": "Hali ishlatilmagan",
+    "active": "Faol",
+    "inactive": "Nofaol",
+    "rotate": "Secret'ni yangilash",
+    "rotateConfirm": "'{{name}}' uchun yangi secret yaratilsinmi? Eski secret va u bilan olingan barcha tokenlar darhol ishlamay qoladi.",
+    "deactivateConfirm": "'{{name}}' integratsiyasi nofaol qilinsinmi? Uning tokenlari darhol ishlamay qoladi.",
+    "form": {
+      "name": "Nomi",
+      "description": "Izoh",
+      "scopes": "Ruxsatlar (scope)",
+      "scopesHint": "Kamida bitta ruxsatni tanlang"
+    },
+    "scope": {
+      "requests_read": "O'zi yaratgan murojaatlarni o'qish",
+      "requests_write": "Talaba nomidan murojaat yaratish, xabar va fayl qo'shish",
+      "catalogs_read": "Xizmatlar katalogini o'qish"
+    },
+    "secretTitle": "Kirish ma'lumotlari",
+    "secretWarning": "Client Secret faqat hozir ko'rsatiladi. Uni xavfsiz joyga saqlang: keyin qayta ko'rib bo'lmaydi, faqat yangisini yaratish mumkin.",
+    "clientId": "Client ID",
+    "clientSecret": "Client Secret",
+    "copy": "Nusxalash",
+    "copied": "Nusxalandi",
+    "savedIt": "Saqlab oldim"
   },
   "reports": {
     "title": "KPI hisobotlari",

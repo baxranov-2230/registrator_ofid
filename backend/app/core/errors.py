@@ -27,6 +27,7 @@ _CONSTRAINT_MESSAGES = {
     "faculties_name_key": "Bu nomdagi fakultet allaqachon mavjud",
     "requests_tracking_no_key": "Murojaat raqami to'qnashdi, qayta urinib ko'ring",
     "roles_name_key": "Bu rol allaqachon mavjud",
+    "api_clients_name_key": "Bu nomdagi integratsiya allaqachon mavjud",
 }
 
 

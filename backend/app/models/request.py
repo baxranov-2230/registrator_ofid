@@ -67,6 +67,11 @@ class Request(Base, TimestampMixin):
     sla_paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     #: Idempotency key supplied by the submitting client.
     client_ref: Mapped[str | None] = mapped_column(String(64))
+    #: The integration that filed this request, if any. A client only ever
+    #: sees the requests it filed itself.
+    api_client_id: Mapped[int | None] = mapped_column(
+        ForeignKey("api_clients.id", ondelete="SET NULL"), index=True
+    )
 
     student: Mapped["User"] = relationship(foreign_keys=[student_id])
     assignee: Mapped["User | None"] = relationship(foreign_keys=[assigned_to])

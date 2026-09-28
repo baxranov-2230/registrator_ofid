@@ -137,6 +137,40 @@ export interface GroupUpdatePayload {
   is_active?: boolean;
 }
 
+export type ApiScope = "requests:read" | "requests:write" | "catalogs:read";
+
+export const API_SCOPES: ApiScope[] = ["requests:read", "requests:write", "catalogs:read"];
+
+export interface ApiClientOut {
+  id: number;
+  name: string;
+  description: string | null;
+  client_id: string;
+  scopes: ApiScope[];
+  is_active: boolean;
+  last_used_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Returned only on create and on rotation: the secret is not stored. */
+export interface ApiClientCredentials extends ApiClientOut {
+  client_secret: string;
+}
+
+export interface ApiClientCreatePayload {
+  name: string;
+  description?: string | null;
+  scopes: ApiScope[];
+}
+
+export interface ApiClientUpdatePayload {
+  name?: string;
+  description?: string | null;
+  scopes?: ApiScope[];
+  is_active?: boolean;
+}
+
 export const adminApi = api.injectEndpoints({
   endpoints: (build) => ({
     // Users
@@ -228,6 +262,24 @@ export const adminApi = api.injectEndpoints({
       invalidatesTags: [{ type: "Category", id: "LIST" }],
     }),
 
+    // API clients
+    listApiClients: build.query<ApiClientOut[], void>({
+      query: () => "/admin/api-clients",
+      providesTags: [{ type: "ApiClient", id: "LIST" }],
+    }),
+    createApiClient: build.mutation<ApiClientCredentials, ApiClientCreatePayload>({
+      query: (body) => ({ url: "/admin/api-clients", method: "POST", body }),
+      invalidatesTags: [{ type: "ApiClient", id: "LIST" }],
+    }),
+    updateApiClient: build.mutation<ApiClientOut, { id: number; data: ApiClientUpdatePayload }>({
+      query: ({ id, data }) => ({ url: `/admin/api-clients/${id}`, method: "PATCH", body: data }),
+      invalidatesTags: [{ type: "ApiClient", id: "LIST" }],
+    }),
+    rotateApiClientSecret: build.mutation<ApiClientCredentials, number>({
+      query: (id) => ({ url: `/admin/api-clients/${id}/rotate-secret`, method: "POST" }),
+      invalidatesTags: [{ type: "ApiClient", id: "LIST" }],
+    }),
+
     // Audit
     listAudit: build.query<Page<AuditLogOut>, AuditListParams | void>({
       query: (params) => ({ url: "/admin/audit", params: params || undefined }),
@@ -252,5 +304,9 @@ export const {
   useCreateCategoryMutation,
   useUpdateCategoryMutation,
   useDeactivateCategoryMutation,
+  useListApiClientsQuery,
+  useCreateApiClientMutation,
+  useUpdateApiClientMutation,
+  useRotateApiClientSecretMutation,
   useListAuditQuery,
 } = adminApi;

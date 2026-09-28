@@ -10,6 +10,39 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import RequestCategory
+from app.schemas.catalog import CategoryTreeNode
+
+
+async def category_tree(
+    db: AsyncSession, *, include_inactive: bool = False
+) -> list[CategoryTreeNode]:
+    """The catalogue as service types with their services nested beneath."""
+    stmt = select(RequestCategory).order_by(RequestCategory.name)
+    if not include_inactive:
+        stmt = stmt.where(RequestCategory.is_active.is_(True))
+    rows = (await db.execute(stmt)).scalars().all()
+
+    nodes: dict[int, CategoryTreeNode] = {
+        r.id: CategoryTreeNode(
+            id=r.id,
+            parent_id=r.parent_id,
+            name=r.name,
+            sla_hours=r.sla_hours,
+            priority=r.priority,
+            is_active=r.is_active,
+            icon=r.icon,
+            children=[],
+        )
+        for r in rows
+    }
+    roots: list[CategoryTreeNode] = []
+    for r in rows:
+        node = nodes[r.id]
+        if r.parent_id and r.parent_id in nodes:
+            nodes[r.parent_id].children.append(node)
+        else:
+            roots.append(node)
+    return roots
 
 
 async def resolve_service(

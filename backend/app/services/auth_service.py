@@ -176,11 +176,16 @@ async def _upsert_student_group(
 
 
 async def sync_student_from_profile(
-    db: AsyncSession, profile: dict, fallback_student_id: str | None = None
+    db: AsyncSession,
+    profile: dict,
+    fallback_student_id: str | None = None,
+    *,
+    mark_login: bool = True,
 ) -> User:
     """Upsert a student User row from a normalized HEMIS profile dict.
 
-    Auto-creates Faculty and StudentGroup records as needed.
+    Auto-creates Faculty and StudentGroup records as needed. An API client
+    supplying a profile passes `mark_login=False`: the student did not log in.
     """
     student_id = profile.get("student_id_number") or fallback_student_id
     if not student_id:
@@ -216,7 +221,8 @@ async def sync_student_from_profile(
             u.email = profile["email"]
         if profile.get("phone"):
             u.phone = profile["phone"]
-        u.last_login_at = datetime.now(UTC)
+        if mark_login:
+            u.last_login_at = datetime.now(UTC)
 
         sp.external_student_id = student_id
         if faculty:

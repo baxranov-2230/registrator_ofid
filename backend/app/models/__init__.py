@@ -1,3 +1,4 @@
+from app.models.api_client import ApiClient
 from app.models.audit import AuditLog
 from app.models.base import Base
 from app.models.category import RequestCategory
@@ -10,6 +11,7 @@ from app.models.role import Role
 from app.models.user import User
 
 __all__ = [
+    "ApiClient",
     "AuditLog",
     "Base",
     "Department",

@@ -21,6 +21,7 @@ describe("navigation by role", () => {
     const targets = navItemsFor("leadership").map((i) => i.to);
     expect(targets).not.toContain("/admin/users");
     expect(targets).not.toContain("/admin/categories");
+    expect(targets).not.toContain("/admin/api-clients");
   });
 
   it("routes each role to its own request detail prefix", () => {

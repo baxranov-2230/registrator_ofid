@@ -118,6 +118,7 @@ async def create_request(
     description: str,
     service_type_id: int | None = None,
     client_ref: str | None = None,
+    api_client_id: int | None = None,
 ) -> Request:
     category = await resolve_service(db, service_type_id=service_type_id, service_id=category_id)
 
@@ -142,6 +143,7 @@ async def create_request(
         department_id=student.department_id,
         sla_deadline=sla_deadline,
         client_ref=client_ref,
+        api_client_id=api_client_id,
     )
     db.add(req)
     await db.flush()

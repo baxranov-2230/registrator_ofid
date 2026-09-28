@@ -20,6 +20,7 @@ from app.schemas.catalog import (
     StudentGroupUpdate,
 )
 from app.services.audit_service import log_action
+from app.services.catalog_service import category_tree
 
 router = APIRouter(tags=["catalogs"])
 
@@ -73,32 +74,7 @@ async def list_categories(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> list[CategoryTreeNode]:
-    stmt = select(RequestCategory).order_by(RequestCategory.name)
-    if not (include_inactive and user.has_role(Role.ADMIN)):
-        stmt = stmt.where(RequestCategory.is_active.is_(True))
-    rows = (await db.execute(stmt)).scalars().all()
-
-    nodes: dict[int, CategoryTreeNode] = {
-        r.id: CategoryTreeNode(
-            id=r.id,
-            parent_id=r.parent_id,
-            name=r.name,
-            sla_hours=r.sla_hours,
-            priority=r.priority,
-            is_active=r.is_active,
-            icon=r.icon,
-            children=[],
-        )
-        for r in rows
-    }
-    roots: list[CategoryTreeNode] = []
-    for r in rows:
-        node = nodes[r.id]
-        if r.parent_id and r.parent_id in nodes:
-            nodes[r.parent_id].children.append(node)
-        else:
-            roots.append(node)
-    return roots
+    return await category_tree(db, include_inactive=include_inactive and user.has_role(Role.ADMIN))
 
 
 # ── Admin catalog management ────────────────────────────────────────────────

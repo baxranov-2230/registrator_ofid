@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     # actively working never gets logged out while an idle tab does.
     session_idle_timeout_minutes: int = 30
 
+    # Tokens minted for API clients (OAuth2 client_credentials). The client
+    # holds no refresh token; it simply asks for a new one with its secret.
+    client_token_ttl_minutes: int = 60
+
     # Refresh tokens ride in an httpOnly cookie so XSS cannot read them. Secure
     # is forced on outside dev; dev runs over plain http://localhost.
     refresh_cookie_name: str = "royd_refresh"
