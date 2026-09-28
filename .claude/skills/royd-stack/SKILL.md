@@ -1,6 +1,6 @@
 ---
 name: royd-stack
-description: Running, inspecting, and debugging the ROYD Docker stack — ports, make targets, seeded logins, HEMIS mock toggle, and the known environment gotchas. Use when starting the app, reading logs, reproducing a bug end to end, or when a local tool suddenly cannot run.
+description: Running, inspecting, and debugging the ROYD Docker stack — ports, make targets, seeded logins, and the known environment gotchas. Use when starting the app, reading logs, reproducing a bug end to end, or when a local tool suddenly cannot run.
 ---
 
 # Running the ROYD stack
@@ -9,7 +9,7 @@ Six containers from `infra/docker-compose.yml`, all reached through nginx. Ports
 
 | Service | Host port | Notes |
 |---|---|---|
-| nginx | 8080 | the real entry point — `/api/`, `/ws/`, `/hemis/`, `/` |
+| nginx | 8080 | the real entry point — `/api/`, `/ws/`, `/` |
 | backend | 8001 | FastAPI direct; docs at `/api/docs` |
 | frontend | 5174 | Vite dev server |
 | postgres | 5433 | |
@@ -39,16 +39,12 @@ Health check: `curl -s http://127.0.0.1:8001/healthz`.
 | registrator | `registrator@royd.uz` / `reg123` |
 | leadership | `leadership@royd.uz` / `lead123` |
 | staff | `staff1@royd.uz` / `staff123` |
-| student | HEMIS flow — `STU001` / `student1` (needs `HEMIS_USE_MOCK=true`) |
 
 `make seed` refuses to run when `ENV != dev`: these passwords are public.
 
-## HEMIS
+## Students
 
-Two paths, controlled by `HEMIS_USE_MOCK`:
-
-- **Mock** (`app/services/hemis_mock.py`): fixtures for `STU001` etc. Any *unknown* username with any non-empty password also succeeds and auto-creates a student — a full auth bypass, so it defaults to **off** and the backend refuses to start with it enabled when `ENV != dev`. Set `HEMIS_USE_MOCK=true` in `.env` to work offline.
-- **Real** (default): points at `https://student.ndki.uz`. The browser can also authenticate directly via the nginx `/hemis/auth/login` proxy — only that one path is exposed, and it is rate limited — then exchange the token at `POST /api/v1/auth/hemis/exchange`.
+Students never sign in. They are created and updated by the partner platform through the integration API (`POST /api/v1/integration/requests`, client-credentials token) — see `docs/INTEGRATION.md`. To get a student into a dev database, create an API client under `/admin/api-clients` and file a request with it.
 
 ## Known gotchas
 

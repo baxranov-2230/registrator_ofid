@@ -313,7 +313,7 @@ async def update_student_group(
     db: AsyncSession = Depends(get_db),
     actor: User = Depends(get_current_user),
 ) -> StudentGroupOut:
-    """Groups arrive from HEMIS sync; this allows local corrections."""
+    """Groups arrive through the integration API; this allows local corrections."""
     group = await db.get(StudentGroup, group_id)
     if not group:
         raise HTTPException(status_code=404, detail="Guruh topilmadi")

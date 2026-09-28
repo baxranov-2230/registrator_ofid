@@ -9,7 +9,6 @@ import os
 from collections.abc import AsyncIterator
 
 os.environ.setdefault("ENV", "dev")
-os.environ.setdefault("HEMIS_USE_MOCK", "true")
 
 import pytest
 from httpx import ASGITransport, AsyncClient

@@ -39,12 +39,6 @@ if settings.sentry_dsn:
 async def lifespan(_: FastAPI):
     setup_logging()
 
-    if settings.hemis_use_mock:
-        log.warning(
-            "HEMIS_USE_MOCK is ENABLED — any username with any non-empty password "
-            "will authenticate. This must never be set outside development."
-        )
-
     await start_pubsub_listener()
 
     # Every uvicorn worker starts this scheduler. Each job claims a Redis lock

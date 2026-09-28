@@ -20,7 +20,7 @@ Imports use the `@/` alias (`@/features/...`), never deep relative paths.
 
 ## API calls
 
-All data goes through RTK Query — no bare `fetch` (the one exception is `hemisService.ts`, which must bypass our auth layer).
+All data goes through RTK Query — no bare `fetch`.
 
 ```ts
 export const domainApi = api.injectEndpoints({

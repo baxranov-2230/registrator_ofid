@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 
 from app.core.config import settings
-from app.models import OutboxMessage, Request, Student
+from app.models import OutboxMessage, Request
 from app.models.outbox import OutboxKind
 from app.models.role import Role
 from app.services import outbox_service
@@ -201,18 +201,6 @@ async def test_failed_delivery_is_retried_later(session_factory, monkeypatch, cl
     assert "smtp down" in row.last_error
     next_attempt = row.next_attempt_at.replace(tzinfo=UTC)
     assert next_attempt > datetime.now(UTC)
-
-
-async def test_hemis_login_stores_the_students_department(client, session_factory):
-    resp = await client.post(
-        "/api/v1/auth/login/hemis", json={"username": "STU001", "password": "student1"}
-    )
-    assert resp.status_code == 200, resp.text
-    async with session_factory() as db:
-        student = (
-            await db.execute(select(Student).where(Student.external_student_id == "STU001"))
-        ).scalar_one()
-    assert student.department_id is not None
 
 
 async def test_request_inherits_student_department(client, login, seeded, session_factory):

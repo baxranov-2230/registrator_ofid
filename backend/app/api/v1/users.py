@@ -151,7 +151,7 @@ async def create_user(
     db.add(user)
     await db.flush()
 
-    # This endpoint creates staff; students arrive through the HEMIS sync,
+    # This endpoint creates staff; students arrive through the integration API,
     # which builds their profile instead.
     if role.name == Role.STUDENT:
         db.add(Student(user_id=user.id))

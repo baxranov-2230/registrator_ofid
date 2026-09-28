@@ -215,7 +215,7 @@ async def create_request(
     `image`, `faculty` and `group`, and the request is routed to the
     registrator bound to that faculty.
     """
-    student = await sync_student_from_profile(db, data.student_profile(), mark_login=False)
+    student = await sync_student_from_profile(db, data.student_profile())
     if not student.is_active:
         raise HTTPException(status_code=403, detail="Talaba akkaunti faol emas")
 

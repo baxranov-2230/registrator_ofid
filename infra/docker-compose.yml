@@ -56,10 +56,6 @@ services:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-royd}:${POSTGRES_PASSWORD:-royd_dev_pw}@royd_postgres:5432/${POSTGRES_DB:-royd}
       REDIS_URL: redis://royd_redis:6379/0
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me-to-32-chars-pls}
-      HEMIS_USE_MOCK: "${HEMIS_USE_MOCK:-false}"
-      HEMIS_BASE_URL: "https://student.ndki.uz"
-      HEMIS_LOGIN_PATH: "/rest/v1/auth/login"
-      HEMIS_ME_PATH: "/rest/v1/account/me"
       SMTP_HOST: royd_mailhog
       SMTP_PORT: "1025"
       STORAGE_DIR: /app/storage/uploads

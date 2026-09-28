@@ -11,32 +11,12 @@ formatida keladi: `{"detail": "..."}`, validatsiya xatosi (422) esa
 
 ## 1. Autentifikatsiya
 
-> Talabaning HEMIS tokeni bo'lmagan tashqi tizim o'z nomidan ham ishlay oladi.
-> Buning uchun Client ID va Client Secret bilan kiradi, qarang:
-> [6-bo'lim](#6-client-id--client-secret-server-to-server).
+Hamkor platforma ROYD bilan faqat **o'z nomidan**, Client ID va Client Secret
+orqali ishlaydi: [6-bo'lim](#6-client-id--client-secret-server-to-server).
+Talabalar ROYD'ga kirmaydi va ularga token berilmaydi. Talaba ma'lumotlari
+murojaat bilan birga yuboriladi.
 
-ROYD talabani HEMIS orqali taniydi. Hamkor platforma talabaning HEMIS tokenini
-allaqachon oladi, uni ROYD tokeniga almashtiradi:
-
-```http
-POST /api/v1/auth/hemis/exchange
-Content-Type: application/json
-
-{"hemis_token": "<talabaning HEMIS tokeni>"}
-```
-
-Javob:
-
-```json
-{"access_token": "...", "refresh_token": "...", "token_type": "bearer"}
-```
-
-- ROYD tokenni HEMIS `/account/me` orqali tekshiradi va talaba profilini
-  (fakultet, guruh, kafedra) yangilaydi.
-- Keyingi so'rovlar `Authorization: Bearer <access_token>` bilan yuboriladi.
-- `access_token` 15 daqiqa amal qiladi. Sessiya 30 daqiqa faolsiz qolsa,
-  yopiladi. Ikkala holatda ham 401 qaytadi. Shunda almashtirishni qaytadan
-  bajaring yoki `POST /auth/refresh` ga `{"refresh_token": "..."}` yuboring.
+- So'rovlar `Authorization: Bearer <access_token>` bilan yuboriladi.
 - Chaqiruvlarni **hamkor platformaning serveridan** qiling. Brauzerdan
   chaqirilsa, CORS ruxsat bermaydi.
 
@@ -45,24 +25,12 @@ Javob:
 Xizmatlar katalogi (ikki bosqichli: xizmat turi → xizmat):
 
 ```http
-GET /api/v1/categories
+GET /api/v1/integration/categories
 ```
 
-Murojaat yaratish — **har doim `Idempotency-Key` bilan**:
-
-```http
-POST /api/v1/requests
-Authorization: Bearer <access_token>
-Idempotency-Key: 7f1c2e9a-...        (1–64 belgi, har bir yangi murojaat uchun yangi)
-Content-Type: application/json
-
-{
-  "category_id": 12,          // aniq xizmat (katalogdagi barg)
-  "service_type_id": 1,       // ixtiyoriy; berilsa xizmatga mos bo'lishi shart
-  "title": "Ma'lumotnoma kerak",
-  "description": "O'qish joyidan ma'lumotnoma"
-}
-```
+Murojaat yaratish — **har doim `Idempotency-Key` bilan** (1–64 belgi, har bir
+yangi murojaat uchun yangi): `POST /api/v1/integration/requests`. Body va
+maydonlar: [6-bo'lim, «Murojaat yaratish»](#murojaat-yaratish).
 
 | Javob | Ma'nosi |
 |---|---|
@@ -79,12 +47,12 @@ hisoblanadi.
 
 | So'rov | Vazifasi |
 |---|---|
-| `GET /requests` | Talabaning murojaatlari (`limit`, `offset`, `status`) |
-| `GET /requests/{id}` | Tafsilot: holat, tarix, xabarlar, fayllar |
-| `POST /requests/{id}/messages` | Talaba xabari: `{"content": "..."}` |
-| `POST /requests/{id}/files` | Fayl (`multipart/form-data`, maydon nomi `upload`) |
-| `GET /requests/{id}/files/{file_id}` | Faylni yuklab olish (masalan, tayyor hujjat) |
-| `POST /requests/{id}/resubmit` | Qaytarilgan murojaatni to'ldirib qayta yuborish: `{"comment": "..."}` |
+| `GET /integration/requests` | Integratsiya yaratgan murojaatlar (`limit`, `offset`, `status`, `student_hemis_id`) |
+| `GET /integration/requests/{id}` | Tafsilot: holat, tarix, xabarlar, fayllar |
+| `POST /integration/requests/{id}/messages` | Talaba xabari: `{"content": "..."}` |
+| `POST /integration/requests/{id}/files` | Fayl (`multipart/form-data`, maydon nomi `upload`) |
+| `GET /integration/requests/{id}/files/{file_id}` | Faylni yuklab olish (masalan, tayyor hujjat) |
+| `POST /integration/requests/{id}/resubmit` | Qaytarilgan murojaatni to'ldirib qayta yuborish: `{"comment": "..."}` |
 
 Holatlar:
 
@@ -172,7 +140,7 @@ function verify(rawBody, header, secret) {
 - Bir hodisa ikki marta kelishi mumkin. `X-ROYD-Delivery` (`id`) bo'yicha
   takrorlarni tashlab yuboring.
 - Tartib kafolatlanmaydi. Holatni `occurred_at` bo'yicha yoki
-  `GET /requests/{id}` orqali aniqlang.
+  `GET /integration/requests/{id}` orqali aniqlang.
 
 ## 5. Cheklovlar
 

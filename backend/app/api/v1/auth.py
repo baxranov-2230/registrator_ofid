@@ -37,8 +37,6 @@ from app.models import User
 from app.schemas.auth import (
     ChangePasswordRequest,
     ForgotPasswordRequest,
-    HemisLoginRequest,
-    HemisTokenRequest,
     LoginRequest,
     LoginResponse,
     MfaLoginRequest,
@@ -54,8 +52,6 @@ from app.services.audit_service import log_action
 from app.services.auth_service import (
     AuthError,
     authenticate_local,
-    authenticate_student_by_hemis_token,
-    authenticate_student_hemis,
     issue_tokens,
 )
 from app.services.email_templates import render
@@ -213,73 +209,6 @@ async def login_second_factor(
     return await _complete_login(
         user=user, action="login_2fa", request=request, response=response, db=db, redis=redis
     )
-
-
-@router.post("/login/hemis", response_model=TokenPair)
-async def login_hemis(
-    data: HemisLoginRequest,
-    request: Request,
-    response: Response,
-    db: AsyncSession = Depends(get_db),
-    redis: Redis = Depends(get_redis_dep),
-) -> TokenPair:
-    identity = f"hemis:{data.username.lower()}"
-    ip = client_ip(request)
-    await check_brute_force(redis, identity=identity, ip=ip)
-    try:
-        user = await authenticate_student_hemis(db, username=data.username, password=data.password)
-    except AuthError as exc:
-        await record_login_failure(redis, identity=identity, ip=ip)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
-
-    await clear_login_failures(redis, identity=identity, ip=ip)
-    access, refresh = await issue_tokens(redis, user)
-    await log_action(
-        db,
-        user_id=user.id,
-        action="login_hemis",
-        entity_type="user",
-        entity_id=user.id,
-        ip_address=client_ip(request),
-        user_agent=request.headers.get("user-agent"),
-    )
-    await db.commit()
-    _set_refresh_cookie(response, refresh)
-    return TokenPair(access_token=access, refresh_token=refresh)
-
-
-@router.post("/hemis/exchange", response_model=TokenPair)
-async def hemis_exchange(
-    data: HemisTokenRequest,
-    request: Request,
-    response: Response,
-    db: AsyncSession = Depends(get_db),
-    redis: Redis = Depends(get_redis_dep),
-) -> TokenPair:
-    """Exchange an already-obtained HEMIS token for a local JWT pair.
-
-    Flow: frontend calls HEMIS /auth/login directly and gets a token.
-    It then posts that token here; the backend validates it via HEMIS /me,
-    syncs the local user row, and issues local access + refresh tokens.
-    """
-    try:
-        user = await authenticate_student_by_hemis_token(db, data.hemis_token)
-    except AuthError as exc:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(exc)) from exc
-
-    access, refresh = await issue_tokens(redis, user)
-    await log_action(
-        db,
-        user_id=user.id,
-        action="login_hemis_token",
-        entity_type="user",
-        entity_id=user.id,
-        ip_address=client_ip(request),
-        user_agent=request.headers.get("user-agent"),
-    )
-    await db.commit()
-    _set_refresh_cookie(response, refresh)
-    return TokenPair(access_token=access, refresh_token=refresh)
 
 
 @router.post("/refresh", response_model=TokenPair)

@@ -31,8 +31,8 @@ class IntegrationRequestCreate(RequestCreate):
             "student_id_number": self.student_hemis_id,
             "full_name": self.full_name,
             "image_path": str(self.image) if self.image else None,
-            "faculty": {"name": self.faculty},
-            "group": {"name": self.group},
+            "faculty": self.faculty,
+            "group": self.group,
         }
 
 

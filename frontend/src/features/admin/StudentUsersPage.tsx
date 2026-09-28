@@ -33,9 +33,9 @@ import { ROLE_COLORS, initials } from "@/features/admin/userMeta";
 /**
  * Student directory.
  *
- * Read-only by design: student records are owned by HEMIS and synced on login,
- * so editing them here would be overwritten on the student's next sign-in.
- * The columns are the HEMIS ones an administrator actually looks people up by —
+ * Read-only by design: student records come from the partner platform with
+ * each request it files, so editing them here would be overwritten by the next one.
+ * The columns are the academic ones an administrator actually looks people up by —
  * group, course, faculty — none of which apply to staff.
  */
 export default function StudentUsersPage() {
@@ -86,9 +86,9 @@ export default function StudentUsersPage() {
     <Box sx={{ width: "100%" }}>
       <PageHeader title={t("users.studentsTitle")} subtitle={t("users.studentsSubtitle")} />
 
-      {/* Students arrive through HEMIS, so there is no "add" button here. */}
+      {/* Students arrive through the integration API, so there is no "add" button here. */}
       <Alert severity="info" sx={{ mb: 3 }}>
-        {t("users.studentsHemisNote")}
+        {t("users.studentsSourceNote")}
       </Alert>
 
       <Box

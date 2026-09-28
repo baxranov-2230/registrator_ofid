@@ -84,13 +84,11 @@ def test_production_settings_reject_dev_secrets() -> None:
         Settings(
             env="production",
             jwt_secret="dev-secret-change-me",
-            hemis_use_mock=True,
             cors_origins="*",
             database_url="postgresql+asyncpg://royd:royd_dev_pw@db:5432/royd",
         )
     message = str(exc.value)
     assert "JWT_SECRET" in message
-    assert "HEMIS_USE_MOCK" in message
     assert "CORS_ORIGINS" in message
 
 
@@ -98,7 +96,6 @@ def test_production_settings_accept_a_real_configuration() -> None:
     cfg = Settings(
         env="production",
         jwt_secret="x" * 48,
-        hemis_use_mock=False,
         cors_origins="https://royd.ndki.uz",
         database_url="postgresql+asyncpg://royd:S3cure-Passw0rd@db:5432/royd",
     )
@@ -108,7 +105,7 @@ def test_production_settings_accept_a_real_configuration() -> None:
 
 def test_dev_settings_stay_permissive() -> None:
     """Development must not be blocked by the production guard."""
-    cfg = Settings(env="dev", jwt_secret="short", hemis_use_mock=True, cors_origins="*")
+    cfg = Settings(env="dev", jwt_secret="short", cors_origins="*")
     assert cfg.is_dev is True
 
 

@@ -58,13 +58,6 @@ class Settings(BaseSettings):
     def refresh_cookie_secure(self) -> bool:
         return not self.is_dev
 
-    hemis_base_url: str = "https://student.ndki.uz"
-    hemis_login_path: str = "/rest/v1/auth/login"
-    hemis_me_path: str = "/rest/v1/account/me"
-    # Default OFF: the mock accepts any password for any username, so an
-    # environment that forgets to set this must fail closed, not open (B-02).
-    hemis_use_mock: bool = False
-
     smtp_host: str = "localhost"
     smtp_port: int = 1025
     smtp_username: str = ""
@@ -148,8 +141,6 @@ class Settings(BaseSettings):
             problems.append("JWT_SECRET is still a known development value")
         if len(self.jwt_secret) < 32:
             problems.append("JWT_SECRET must be at least 32 characters")
-        if self.hemis_use_mock:
-            problems.append("HEMIS_USE_MOCK must be false outside dev — it bypasses authentication")
         if "*" in self.cors_origins_list:
             problems.append("CORS_ORIGINS must list explicit origins, not '*'")
         if not self.cors_origins_list:

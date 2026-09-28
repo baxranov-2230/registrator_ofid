@@ -265,13 +265,6 @@ echo "0 3 * * * root certbot renew --quiet --pre-hook 'docker compose -f /opt/ro
 
 ## Production uchun qo'shimcha
 
-### HEMIS (haqiqiy)
-`.env` da:
-```env
-HEMIS_USE_MOCK=false
-HEMIS_BASE_URL=https://student.ndki.uz
-```
-
 ### Kuchli parollar
 ```env
 POSTGRES_PASSWORD=<32+ belgili random parol>

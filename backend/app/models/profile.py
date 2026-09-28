@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 
 class Student(Base, TimestampMixin):
-    """Academic profile, owned by HEMIS and refreshed on every login."""
+    """Academic profile, supplied by the partner platform with each request it files."""
 
     __tablename__ = "students"
 

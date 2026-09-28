@@ -88,89 +88,6 @@
         }
       }
     },
-    "/api/v1/auth/login/hemis": {
-      "post": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "Login Hemis",
-        "operationId": "login_hemis_api_v1_auth_login_hemis_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/HemisLoginRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TokenPair"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/auth/hemis/exchange": {
-      "post": {
-        "tags": [
-          "auth"
-        ],
-        "summary": "Hemis Exchange",
-        "description": "Exchange an already-obtained HEMIS token for a local JWT pair.\n\nFlow: frontend calls HEMIS /auth/login directly and gets a token.\nIt then posts that token here; the backend validates it via HEMIS /me,\nsyncs the local user row, and issues local access + refresh tokens.",
-        "operationId": "hemis_exchange_api_v1_auth_hemis_exchange_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/HemisTokenRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/TokenPair"
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/v1/auth/refresh": {
       "post": {
         "tags": [
@@ -1515,7 +1432,7 @@
           "admin-catalogs"
         ],
         "summary": "Update Student Group",
-        "description": "Groups arrive from HEMIS sync; this allows local corrections.",
+        "description": "Groups arrive through the integration API; this allows local corrections.",
         "operationId": "update_student_group_api_v1_admin_groups__group_id__patch",
         "security": [
           {
@@ -4574,43 +4491,6 @@
         },
         "type": "object",
         "title": "HTTPValidationError"
-      },
-      "HemisLoginRequest": {
-        "properties": {
-          "username": {
-            "type": "string",
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Username"
-          },
-          "password": {
-            "type": "string",
-            "maxLength": 128,
-            "minLength": 1,
-            "title": "Password"
-          }
-        },
-        "type": "object",
-        "required": [
-          "username",
-          "password"
-        ],
-        "title": "HemisLoginRequest"
-      },
-      "HemisTokenRequest": {
-        "properties": {
-          "hemis_token": {
-            "type": "string",
-            "maxLength": 2048,
-            "minLength": 10,
-            "title": "Hemis Token"
-          }
-        },
-        "type": "object",
-        "required": [
-          "hemis_token"
-        ],
-        "title": "HemisTokenRequest"
       },
       "IntegrationMessage": {
         "properties": {

@@ -40,7 +40,6 @@ the defaults are not the framework defaults:
 | Registrator (Iqtisodiyot) | `registrator2@royd.uz` | `reg123` |
 | Leadership | `leadership@royd.uz` | `lead123` |
 | Staff | `staff1@royd.uz` | `staff123` |
-| Student | `STU001` (HEMIS mock, API only) | `student1` |
 
 The web app is for staff only. Students file and follow requests on the
 university's student platform, which calls this API — see
@@ -72,11 +71,9 @@ These passwords are public, so `make seed` refuses to run when `ENV` is not
 It asks nothing: the account is `admin@ndkti.uz` and a fresh random password is
 printed at the end. Running it again resets that password.
 
-Students authenticate through HEMIS, via the API only
-(`/auth/hemis/exchange`, `/auth/login/hemis`); the login page has no student
-option. Set `HEMIS_USE_MOCK=true` in `.env` for the offline fixtures — the mock
-accepts any password for any username, so it must never be enabled outside
-development. The backend refuses to start with it on when `ENV != dev`.
+Students never sign in. They are created from the partner platform's requests
+through the integration API (client credentials) — see
+[docs/INTEGRATION.md](docs/INTEGRATION.md).
 
 Staff can change their own password (Profile), reset a forgotten one by email
 (`/forgot-password`), and turn on two-factor sign-in with an authenticator app.
