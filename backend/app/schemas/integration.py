@@ -24,6 +24,9 @@ class IntegrationRequestCreate(RequestCreate):
     faculty: str = Field(min_length=1, max_length=255)
     #: Group name, within that faculty. Matched, or created.
     group: str = Field(min_length=1, max_length=128)
+    #: Year of study. Bounded so a HEMIS level code (11 for the first year)
+    #: sent by mistake is refused instead of stored as the 11th year.
+    course: int = Field(ge=1, le=7)
 
     def student_profile(self) -> dict:
         """The normalized profile shape `sync_student_from_profile` expects."""
@@ -33,6 +36,7 @@ class IntegrationRequestCreate(RequestCreate):
             "image_path": str(self.image) if self.image else None,
             "faculty": self.faculty,
             "group": self.group,
+            "level": self.course,
         }
 
 

@@ -4574,6 +4574,12 @@
             "maxLength": 128,
             "minLength": 1,
             "title": "Group"
+          },
+          "course": {
+            "type": "integer",
+            "maximum": 7.0,
+            "minimum": 1.0,
+            "title": "Course"
           }
         },
         "type": "object",
@@ -4584,7 +4590,8 @@
           "student_hemis_id",
           "full_name",
           "faculty",
-          "group"
+          "group",
+          "course"
         ],
         "title": "IntegrationRequestCreate",
         "description": "A request filed by an external system (e.g. the LMS) for a student.\n\nThe system is trusted with the student fields: the student is created or\nupdated from them, and `faculty` decides which registrator receives the\nrequest."

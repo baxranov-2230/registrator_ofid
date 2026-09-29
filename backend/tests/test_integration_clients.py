@@ -17,6 +17,7 @@ def _request_body(seeded, **overrides) -> dict:
         "image": "https://lms.test/photos/3052211100123.jpg",
         "faculty": "Axborot texnologiyalari",
         "group": "IT-21",
+        "course": 3,
         "category_id": seeded["category_id"],
         "title": "Ma'lumotnoma kerak",
         "description": "O'qish joyidan ma'lumotnoma",
@@ -263,6 +264,7 @@ async def test_client_files_request_for_new_student(
     assert student["external_student_id"] == "3052211100123"
     assert student["image_path"] == "https://lms.test/photos/3052211100123.jpg"
     assert student["group_name"] == "IT-21"
+    assert student["level"] == 3
     assert student["faculty_id"] == seeded["faculty_id"]
 
     again = await client.post(
@@ -425,7 +427,8 @@ async def test_file_upload_and_download(
 
 
 @pytest.mark.parametrize(
-    "missing", ["student_hemis_id", "full_name", "faculty", "group", "category_id", "title"]
+    "missing",
+    ["student_hemis_id", "full_name", "faculty", "group", "course", "category_id", "title"],
 )
 async def test_required_fields(client, seeded, make_client, client_token, missing):
     headers = await client_token(await make_client())
@@ -449,3 +452,35 @@ async def test_image_is_optional_and_must_be_http(client, seeded, make_client, c
         json=_request_body(seeded, image="javascript:alert(1)"),
     )
     assert bad.status_code == 422
+
+
+@pytest.mark.parametrize("course", [0, 8, 11, "birinchi"])
+async def test_course_out_of_range_is_422(client, seeded, make_client, client_token, course):
+    headers = await client_token(await make_client())
+    resp = await client.post(
+        "/api/v1/integration/requests",
+        headers=headers,
+        json=_request_body(seeded, course=course),
+    )
+    assert resp.status_code == 422
+
+
+async def test_course_is_updated_for_existing_student(
+    client, login, seeded, make_client, client_token
+):
+    """A student moves up a year; the next request from the LMS carries it."""
+    headers = await client_token(await make_client())
+    for course in (2, 3):
+        resp = await client.post(
+            "/api/v1/integration/requests",
+            headers=headers,
+            json=_request_body(seeded, course=course),
+        )
+        assert resp.status_code == 201, resp.text
+
+    students = await client.get(
+        "/api/v1/users",
+        headers=await login(Role.ADMIN),
+        params={"role": "student", "search": "3052211100123"},
+    )
+    assert students.json()["items"][0]["level"] == 3

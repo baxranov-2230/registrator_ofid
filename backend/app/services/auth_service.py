@@ -125,6 +125,7 @@ async def sync_student_from_profile(db: AsyncSession, profile: dict) -> User:
             sp.student_group_id = group.id
             sp.group_name = group.name
         sp.image_path = profile.get("image_path") or sp.image_path
+        sp.level = profile.get("level") or sp.level
 
     if user is None:
         user = User(

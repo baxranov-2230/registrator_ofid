@@ -230,6 +230,7 @@ Content-Type: application/json
   "image": "https://lms.example.uz/photos/3052211100123.jpg",
   "faculty": "Axborot texnologiyalari",
   "group": "IT-21",
+  "course": 3,
   "category_id": 12,
   "service_type_id": 1,
   "title": "Ma'lumotnoma kerak",
@@ -244,13 +245,14 @@ Content-Type: application/json
 | `image` | yo'q | Rasm havolasi, faqat `http(s)://`, 500 belgigacha. Xodimlar sahifasida shu havola bo'yicha ko'rsatiladi |
 | `faculty` | ha | Fakultet nomi |
 | `group` | ha | Guruh nomi |
+| `course` | ha | Kurs, butun son 1–7 (HEMIS kodi emas: 1-kurs uchun `1`, `11` emas) |
 | `category_id` | ha | Xizmat (katalogdagi barg), `GET /integration/categories` dan |
 | `service_type_id` | yo'q | Xizmat turi. Berilsa, xizmatga mos bo'lishi shart |
 | `title` | ha | 3–500 belgi |
 | `description` | ha | 3–10000 belgi |
 
 - Talaba `student_hemis_id` bo'yicha topiladi. Topilmasa, yaratiladi. Topilsa,
-  F.I.Sh., rasm, fakultet va guruh yuborilganlari bilan yangilanadi. `image`
+  F.I.Sh., rasm, fakultet, guruh va kurs yuborilganlari bilan yangilanadi. `image`
   yuborilmasa, avvalgi rasm saqlanib qoladi.
 - Fakultet nomi bo'yicha qidiriladi, guruh esa shu fakultet ichida nomi
   bo'yicha qidiriladi. Topilmasa, yangisi yaratiladi. Murojaat shu fakultetga
