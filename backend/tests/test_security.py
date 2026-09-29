@@ -17,8 +17,11 @@ def test_password_hash_roundtrip() -> None:
 
 
 def test_state_machine_shape() -> None:
-    assert RequestStatus.ACCEPTED in _ALLOWED_TRANSITIONS[RequestStatus.NEW]
-    assert RequestStatus.COMPLETED in _ALLOWED_TRANSITIONS[RequestStatus.IN_PROGRESS]
+    assert RequestStatus.IN_PROGRESS in _ALLOWED_TRANSITIONS[RequestStatus.NEW]
+    assert RequestStatus.RETURNED in _ALLOWED_TRANSITIONS[RequestStatus.IN_PROGRESS]
+    # Nothing but a final answer closes a request.
+    for targets in _ALLOWED_TRANSITIONS.values():
+        assert not targets & {RequestStatus.COMPLETED, RequestStatus.REJECTED}
     # Closed states are terminal.
     assert _ALLOWED_TRANSITIONS[RequestStatus.COMPLETED] == set()
     assert _ALLOWED_TRANSITIONS[RequestStatus.REJECTED] == set()

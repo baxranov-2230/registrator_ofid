@@ -86,11 +86,12 @@ async def test_unread_count(client, login, seeded):
         headers=student,
         json={"category_id": seeded["category_id"], "title": "Murojaat", "description": "Matn"},
     )
-    registrator = await login(Role.REGISTRATOR)
-    count = (await client.get("/api/v1/notifications/unread-count", headers=registrator)).json()
+    # The request is routed straight to the staff member, who is notified.
+    staff = await login(Role.STAFF)
+    count = (await client.get("/api/v1/notifications/unread-count", headers=staff)).json()
     assert count["count"] >= 1
-    await client.patch("/api/v1/notifications/read-all", headers=registrator)
-    count = (await client.get("/api/v1/notifications/unread-count", headers=registrator)).json()
+    await client.patch("/api/v1/notifications/read-all", headers=staff)
+    count = (await client.get("/api/v1/notifications/unread-count", headers=staff)).json()
     assert count["count"] == 0
 
 

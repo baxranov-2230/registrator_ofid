@@ -1,44 +1,44 @@
-import { useMemo, useRef, useState } from "react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import {
   Alert,
-  Avatar,
   Box,
   Button,
   Card,
   CardContent,
   Chip,
+  type ChipProps,
   Divider,
   IconButton,
-  MenuItem,
-  Paper,
   Stack,
-  TextField,
   Tooltip,
   Typography,
 } from "@mui/material";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
-import SendIcon from "@mui/icons-material/Send";
 import AttachFileIcon from "@mui/icons-material/AttachFile";
 import DownloadIcon from "@mui/icons-material/Download";
-import PersonAddIcon from "@mui/icons-material/PersonAddAlt1";
 import HistoryIcon from "@mui/icons-material/History";
+import TaskAltIcon from "@mui/icons-material/TaskAlt";
 
 import type { RootState } from "@/app/store";
 import {
-  useAddMessageMutation,
   useDownloadRequestFileMutation,
   useGetRequestQuery,
-  useUploadRequestFileMutation,
+  type RequestFileOut,
   type RequestStatus,
 } from "@/features/requests/requestsApi";
 import { PRIORITY_COLOR, STATUS_COLOR } from "@/features/requests/statusMeta";
+import { formatDateTime, formatDuration } from "@/features/requests/format";
 import AssignDialog from "@/features/requests/AssignDialog";
 import RequestActions from "@/features/requests/RequestActions";
 import RequestProgress from "@/features/requests/RequestProgress";
-import { formatApiError } from "@/shared/api/errors";
+
+const FOUR_HOURS = 4 * 60 * 60 * 1000;
+
+/** The SLA job logs its escalations as "[sla-warning] …" / "[sla-breach] …". */
+const SLA_MARKER = /^\[(sla-warning|sla-breach)\]\s*/;
 
 export default function RequestDetailPage() {
   const { t } = useTranslation();
@@ -51,60 +51,21 @@ export default function RequestDetailPage() {
   const { data, isLoading, error } = useGetRequestQuery(requestId, {
     skip: !requestId,
   });
-  const [addMessage, msgState] = useAddMessageMutation();
-  const [uploadFile, uploadState] = useUploadRequestFileMutation();
   const [downloadFile] = useDownloadRequestFileMutation();
 
-  const [message, setMessage] = useState("");
-  const [isInternal, setIsInternal] = useState(false);
   const [assignOpen, setAssignOpen] = useState(false);
-  const [actionErr, setActionErr] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileErr, setFileErr] = useState<string | null>(null);
+  const [now] = useState(() => Date.now());
 
   const canTransition = role === "staff" || role === "registrator" || role === "admin";
   const canAssign = role === "registrator" || role === "admin";
-  // Leadership is read-only; the server refuses its writes.
-  const canWrite = role !== "leadership";
   const isClosed = data?.status === "completed" || data?.status === "rejected";
-
-  /** Newest history comment — explains a return or rejection to the student. */
-  const lastComment = useMemo(() => {
-    if (!data?.history?.length) return null;
-    for (let i = data.history.length - 1; i >= 0; i -= 1) {
-      if (data.history[i].comment) return data.history[i].comment;
-    }
-    return null;
-  }, [data]);
-
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setActionErr(null);
-    if (!message.trim()) return;
-    try {
-      await addMessage({
-        id: requestId,
-        content: message.trim(),
-        // The conversation with the student ends when the request closes;
-        // only staff notes can still be added.
-        is_internal: isClosed || isInternal,
-      }).unwrap();
-      setMessage("");
-      setIsInternal(false);
-    } catch (e: unknown) {
-      setActionErr(formatApiError(e, t("common.error")));
-    }
-  };
-
-  const handleFilePicked = async (file: File) => {
-    setActionErr(null);
-    try {
-      await uploadFile({ id: requestId, file }).unwrap();
-    } catch (e: unknown) {
-      setActionErr(formatApiError(e, t("common.error")));
-    }
-  };
+  // The server lets staff move only the requests assigned to them.
+  const canAct =
+    canTransition && (role !== "staff" || data?.assigned_to === currentUser?.id);
 
   const handleDownload = async (fileId: number, name: string) => {
+    setFileErr(null);
     try {
       const url = await downloadFile({ id: requestId, fileId }).unwrap();
       const a = document.createElement("a");
@@ -113,7 +74,7 @@ export default function RequestDetailPage() {
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch {
-      setActionErr(t("common.error"));
+      setFileErr(t("common.error"));
     }
   };
 
@@ -126,22 +87,47 @@ export default function RequestDetailPage() {
     return <Alert severity="error">{t("common.error")}</Alert>;
   }
 
+  /** How the deadline stands right now, in words rather than a bare date. */
+  const sla: { label: string; color: ChipProps["color"] } | null = (() => {
+    if (isClosed) return null;
+    if (data.sla_paused_at) return { label: t("requests.slaPaused"), color: "default" };
+    const left = new Date(data.sla_deadline).getTime() - now;
+    if (data.is_overdue || left <= 0) {
+      return { label: t("requests.slaOver", { time: formatDuration(left, t) }), color: "error" };
+    }
+    return {
+      label: t("requests.slaLeft", { time: formatDuration(left, t) }),
+      color: left < FOUR_HOURS ? "warning" : "success",
+    };
+  })();
+
+  const priorityColor = PRIORITY_COLOR[data.priority] || "#64748B";
+  // What the student sent with the request. Answer files sit with the answer.
+  const attachments = data.files.filter((f) => !f.is_answer);
+
   return (
     <Box sx={{ width: "100%" }}>
-      <Stack direction="row" alignItems="center" spacing={1} mb={2}>
-        <IconButton onClick={() => navigate(-1)} size="small">
-          <ArrowBackIcon />
-        </IconButton>
-        <Typography variant="body2" color="text.secondary">
-          {t("common.back")}
-        </Typography>
-      </Stack>
+      <Button
+        startIcon={<ArrowBackIcon />}
+        onClick={() => navigate(-1)}
+        color="inherit"
+        sx={{ mb: 2, color: "text.secondary" }}
+      >
+        {t("common.back")}
+      </Button>
 
-      <Card sx={{ mb: 3 }}>
-        <CardContent sx={{ p: 3 }}>
-          <Stack direction={{ xs: "column", md: "row" }} spacing={2} justifyContent="space-between">
-            <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-              <Stack direction="row" spacing={1} alignItems="center" mb={1} flexWrap="wrap" useFlexGap>
+      <Stack direction={{ xs: "column", lg: "row" }} spacing={3} alignItems="flex-start">
+        {/* Main column: what the request is, where it stands, the conversation. */}
+        <Stack spacing={3} sx={{ flex: 1, minWidth: 0, width: "100%" }}>
+          <Card>
+            <CardContent sx={{ p: 3 }}>
+              <Typography variant="caption" color="text.secondary" fontWeight={600}>
+                {data.tracking_no}
+              </Typography>
+              <Typography variant="h5" fontWeight={700} mt={0.5} sx={{ wordBreak: "break-word" }}>
+                {data.title}
+              </Typography>
+              <Stack direction="row" spacing={1} mt={1.5} flexWrap="wrap" useFlexGap>
                 <Chip
                   label={t(`requests.status.${data.status}`)}
                   size="small"
@@ -152,283 +138,150 @@ export default function RequestDetailPage() {
                   }}
                 />
                 <Chip
-                  label={t(`requests.priority.${data.priority}`)}
+                  label={`${t("requests.priorityLabel")}: ${t(`requests.priority.${data.priority}`)}`}
                   size="small"
                   variant="outlined"
-                  sx={{
-                    color: PRIORITY_COLOR[data.priority] || "#64748B",
-                    borderColor: (PRIORITY_COLOR[data.priority] || "#64748B") + "55",
-                  }}
+                  sx={{ color: priorityColor, borderColor: priorityColor + "55" }}
                 />
-                <Typography variant="body2" color="text.secondary">
-                  {data.tracking_no}
-                </Typography>
-                {/* Show the full path the student picked: type → service. */}
-                <Typography variant="body2" color="text.secondary">
-                  {data.service_type ? `· ${data.service_type.name} → ` : "· "}
-                  {data.category?.name}
-                </Typography>
               </Stack>
-              <Typography variant="h5" fontWeight={700} mb={1}>
-                {data.title}
+
+              <Typography variant="overline" color="text.secondary" display="block" mt={2.5}>
+                {t("requests.descriptionLabel")}
               </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: "pre-wrap" }}>
+              <Typography variant="body1" sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                 {data.description}
               </Typography>
-            </Box>
 
-            <Box sx={{ minWidth: 260 }}>
-              <Stack spacing={1.5}>
-                <InfoRow
-                  label={t("requests.from")}
-                  value={data.student?.full_name || t("requests.unknownUser")}
-                />
-                <InfoRow
-                  label={t("requests.assignee")}
-                  value={data.assignee?.full_name || t("requests.notAssignedYet")}
-                />
-                <InfoRow
-                  label={t("requests.createdAtLabel")}
-                  value={new Date(data.created_at).toLocaleString()}
-                />
-                <InfoRow
-                  label={t("requests.sla")}
-                  value={
-                    data.sla_paused_at
-                      ? `${new Date(data.sla_deadline).toLocaleString()} · ${t("requests.slaPaused")}`
-                      : new Date(data.sla_deadline).toLocaleString()
-                  }
-                />
-              </Stack>
-            </Box>
-          </Stack>
-
-          <Divider sx={{ my: 3 }} />
-
-          {/* Everyone sees where the request stands, including the student. */}
-          <RequestProgress status={data.status} lastComment={lastComment} />
-
-          {data.sla_paused_at && (
-            <Alert severity="info" sx={{ mt: 2 }}>
-              {t("requests.slaPausedHint")}
-            </Alert>
-          )}
-
-          {(canAssign || canTransition) && (
-            <>
-              <Divider sx={{ my: 3 }} />
-              <Stack
-                direction={{ xs: "column", md: "row" }}
-                spacing={2}
-                alignItems={{ md: "flex-start" }}
-                justifyContent="space-between"
-              >
-                {canTransition && <RequestActions request={data} role={role} />}
-                {canAssign && (
-                  <Button
-                    variant="outlined"
-                    startIcon={<PersonAddIcon />}
-                    onClick={() => setAssignOpen(true)}
-                    sx={{ flexShrink: 0 }}
-                  >
-                    {data.assigned_to ? t("requests.assign") : t("requests.assignTitle")}
-                  </Button>
-                )}
-              </Stack>
-              {actionErr && (
+              {attachments.length > 0 && (
+                <>
+                  <Typography variant="overline" color="text.secondary" display="block" mt={2.5}>
+                    {t("requests.attachmentsLabel")}
+                  </Typography>
+                  <Stack spacing={1} mt={0.5}>
+                    {attachments.map((f) => (
+                      <FileRow key={f.id} file={f} onDownload={handleDownload} />
+                    ))}
+                  </Stack>
+                </>
+              )}
+              {fileErr && (
                 <Alert severity="error" sx={{ mt: 2 }}>
-                  {actionErr}
+                  {fileErr}
                 </Alert>
               )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
 
-      <Stack direction={{ xs: "column", md: "row" }} spacing={3}>
-        <Box sx={{ flex: 2, minWidth: 0 }}>
+          {/* The outcome, once there is one, sits right under the question. */}
+          {data.answer && (
+            <Card sx={{ borderLeft: "4px solid", borderColor: "success.main" }}>
+              <CardContent sx={{ p: 3 }}>
+                <Stack
+                  direction={{ xs: "column", sm: "row" }}
+                  justifyContent="space-between"
+                  alignItems={{ sm: "center" }}
+                  spacing={0.5}
+                  mb={1.5}
+                >
+                  <Stack direction="row" spacing={1} alignItems="center">
+                    <TaskAltIcon color="success" />
+                    <Typography variant="h6" fontWeight={700}>
+                      {t("requests.finalAnswerTitle")}
+                    </Typography>
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary">
+                    {data.answer.answered_by_name && `${data.answer.answered_by_name} · `}
+                    {formatDateTime(data.answer.answered_at)}
+                  </Typography>
+                </Stack>
+                <Typography variant="body1" sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+                  {data.answer.text}
+                </Typography>
+                {data.answer.files.length > 0 && (
+                  <Stack spacing={1} mt={2}>
+                    {data.answer.files.map((f) => (
+                      <FileRow key={f.id} file={f} onDownload={handleDownload} />
+                    ))}
+                  </Stack>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardContent sx={{ p: 3 }}>
+              <Typography variant="h6" fontWeight={700} mb={3}>
+                {t("requests.progressTitle")}
+              </Typography>
+              <RequestProgress status={data.status} history={data.history} />
+
+              {canAct && !isClosed && (
+                <>
+                  <Divider sx={{ my: 3 }} />
+                  <RequestActions request={data} />
+                </>
+              )}
+              {canTransition && !canAct && !isClosed && (
+                <Typography variant="body2" color="text.secondary" mt={2}>
+                  {t("requests.notYourRequest")}
+                </Typography>
+              )}
+            </CardContent>
+          </Card>
+        </Stack>
+
+        {/* Side column: the facts about the request and its audit trail. */}
+        <Stack spacing={3} sx={{ width: { xs: "100%", lg: 360 }, flexShrink: 0 }}>
           <Card>
             <CardContent sx={{ p: 3 }}>
               <Typography variant="h6" fontWeight={700} mb={2}>
-                {t("requests.messagesTitle")}
+                {t("requests.detailsTitle")}
               </Typography>
-
-              <Stack spacing={1.5} sx={{ mb: 2, maxHeight: 420, overflowY: "auto" }}>
-                {data.messages.length === 0 && (
-                  <Typography variant="body2" color="text.secondary">
-                    {t("requests.noMessages")}
-                  </Typography>
-                )}
-                {data.messages.map((m) => {
-                  const mine = currentUser?.id === m.sender_id;
-                  return (
-                    <Paper
-                      key={m.id}
-                      variant="outlined"
-                      sx={{
-                        p: 1.5,
-                        bgcolor: m.is_internal
-                          ? "warning.light"
-                          : mine
-                            ? "primary.main"
-                            : "background.default",
-                        color: m.is_internal ? "warning.dark" : mine ? "white" : "text.primary",
-                        alignSelf: mine ? "flex-end" : "flex-start",
-                        maxWidth: "80%",
-                        ml: mine ? "auto" : 0,
-                      }}
-                    >
-                      <Stack direction="row" spacing={1} alignItems="center" mb={0.5}>
-                        <Avatar sx={{ width: 24, height: 24, fontSize: 12 }}>
-                          {(mine ? t("requests.you") : m.sender_name || "?")
-                            .trim()
-                            .charAt(0)
-                            .toUpperCase()}
-                        </Avatar>
-                        <Typography variant="caption" fontWeight={700} sx={{ opacity: 0.95 }}>
-                          {mine ? t("requests.you") : m.sender_name || t("requests.unknownUser")}
-                          {m.sender_role && !mine && ` · ${t(`role.${m.sender_role}`)}`}
-                        </Typography>
-                        <Typography variant="caption" sx={{ opacity: 0.75 }}>
-                          {new Date(m.created_at).toLocaleString()}
-                        </Typography>
-                        {m.is_internal && (
-                          <Chip
-                            label={t("requests.internalBadge")}
-                            size="small"
-                            sx={{ height: 18, fontSize: 10, fontWeight: 700 }}
-                          />
-                        )}
-                      </Stack>
-                      <Typography variant="body2" sx={{ whiteSpace: "pre-wrap" }}>
-                        {m.content}
-                      </Typography>
-                    </Paper>
-                  );
-                })}
-              </Stack>
-
-              {canWrite && (
-              <form onSubmit={handleSendMessage}>
-                <Stack direction="row" spacing={1} alignItems="flex-start">
-                  <TextField
-                    fullWidth
-                    size="small"
-                    placeholder={t("requests.messagePlaceholder")}
-                    value={message}
-                    onChange={(e) => setMessage(e.target.value)}
-                    multiline
-                    maxRows={5}
-                  />
-                  <Button
-                    type="submit"
-                    variant="contained"
-                    startIcon={<SendIcon />}
-                    disabled={!message.trim() || msgState.isLoading}
-                  >
-                    {t("requests.send")}
-                  </Button>
-                </Stack>
-                {/* Staff can post either to the student or to colleagues only,
-                    so the selector has to say which one is in effect. Once the
-                    request is closed only internal notes remain possible. */}
-                {isClosed ? (
-                  <Typography variant="caption" color="text.secondary" display="block" mt={1}>
-                    {t("requests.closedInternalOnly")}
-                  </Typography>
-                ) : (
-                  <TextField
-                    select
-                    size="small"
-                    label={t("requests.messageTypeLabel")}
-                    value={isInternal ? "1" : "0"}
-                    onChange={(e) => setIsInternal(e.target.value === "1")}
-                    sx={{ mt: 1.5, minWidth: 260 }}
-                    helperText={
-                      isInternal ? t("requests.internalOnly") : t("requests.publicMessage")
-                    }
-                  >
-                    <MenuItem value="0">{t("requests.publicMessage")}</MenuItem>
-                    <MenuItem value="1">{t("requests.internalOnly")}</MenuItem>
-                  </TextField>
-                )}
-              </form>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card sx={{ mt: 3 }}>
-            <CardContent sx={{ p: 3 }}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-                <Typography variant="h6" fontWeight={700}>
-                  {t("requests.filesTitle")}
-                </Typography>
-                <Button
-                  variant="outlined"
-                  size="small"
-                  startIcon={<AttachFileIcon />}
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploadState.isLoading || isClosed || !canWrite}
+              <Stack spacing={2} divider={<Divider flexItem />}>
+                <InfoItem label={t("requests.serviceLabel")}>
+                  <InfoValue>{data.category?.name}</InfoValue>
+                  {data.service_type && (
+                    <Typography variant="caption" color="text.secondary">
+                      {data.service_type.name}
+                    </Typography>
+                  )}
+                </InfoItem>
+                <InfoItem label={t("requests.studentLabel")}>
+                  <InfoValue>{data.student?.full_name || t("requests.unknownUser")}</InfoValue>
+                </InfoItem>
+                <InfoItem
+                  label={t("requests.assignee")}
+                  action={
+                    canAssign && (
+                      <Button size="small" onClick={() => setAssignOpen(true)} sx={{ py: 0 }}>
+                        {data.assigned_to ? t("requests.reassign") : t("requests.assign")}
+                      </Button>
+                    )
+                  }
                 >
-                  {t("requests.uploadFile")}
-                </Button>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  hidden
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) handleFilePicked(f);
-                    if (fileInputRef.current) fileInputRef.current.value = "";
-                  }}
-                />
+                  <InfoValue muted={!data.assignee}>
+                    {data.assignee?.full_name || t("requests.notAssignedYet")}
+                  </InfoValue>
+                </InfoItem>
+                <InfoItem label={t("requests.createdAtLabel")}>
+                  <InfoValue>{formatDateTime(data.created_at)}</InfoValue>
+                </InfoItem>
+                <InfoItem label={t("requests.deadlineLabel")}>
+                  <InfoValue>{formatDateTime(data.sla_deadline)}</InfoValue>
+                  {sla && (
+                    <Chip
+                      label={sla.label}
+                      color={sla.color}
+                      size="small"
+                      variant="outlined"
+                      sx={{ mt: 0.75, fontWeight: 600 }}
+                    />
+                  )}
+                </InfoItem>
               </Stack>
-              {data.files.length === 0 ? (
-                <Typography variant="body2" color="text.secondary">
-                  {t("requests.noFiles")}
-                </Typography>
-              ) : (
-                <Stack spacing={1}>
-                  {data.files.map((f) => (
-                    <Stack
-                      key={f.id}
-                      direction="row"
-                      alignItems="center"
-                      spacing={1}
-                      sx={{
-                        p: 1,
-                        border: "1px solid",
-                        borderColor: "divider",
-                        borderRadius: 1,
-                      }}
-                    >
-                      <AttachFileIcon fontSize="small" />
-                      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-                        <Typography variant="body2" fontWeight={600} noWrap>
-                          {f.file_name}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {(f.file_size / 1024).toFixed(1)} KB ·{" "}
-                          {new Date(f.created_at).toLocaleString()}
-                        </Typography>
-                      </Box>
-                      <Tooltip title={t("requests.download")}>
-                        <IconButton
-                          size="small"
-                          onClick={() => handleDownload(f.id, f.file_name)}
-                        >
-                          <DownloadIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </Stack>
-                  ))}
-                </Stack>
-              )}
             </CardContent>
           </Card>
-        </Box>
 
-        <Box sx={{ flex: 1, minWidth: 280 }}>
           <Card>
             <CardContent sx={{ p: 3 }}>
               <Stack direction="row" spacing={1} alignItems="center" mb={2}>
@@ -437,50 +290,91 @@ export default function RequestDetailPage() {
                   {t("requests.historyTitle")}
                 </Typography>
               </Stack>
-              <Stack spacing={2}>
-                {data.history.map((h) => (
-                  <Box key={h.id} sx={{ pl: 2, borderLeft: "3px solid", borderColor: "primary.main" }}>
-                    <Stack direction="row" spacing={1} alignItems="center">
-                      {h.old_status && (
-                        <Chip
-                          label={t(`requests.status.${h.old_status}`)}
-                          size="small"
-                          variant="outlined"
+              <Box>
+                {data.history.map((h, i) => {
+                  const isCreate = !h.old_status;
+                  const isTransition = !isCreate && h.old_status !== h.new_status;
+                  const color = STATUS_COLOR[h.new_status as RequestStatus] ?? "#64748B";
+                  const isLast = i === data.history.length - 1;
+                  const slaMatch = h.comment?.match(SLA_MARKER);
+                  const isBreach = slaMatch?.[1] === "sla-breach";
+                  const comment = slaMatch ? h.comment!.slice(slaMatch[0].length) : h.comment;
+                  const dotColor =
+                    isCreate || isTransition
+                      ? color
+                      : slaMatch
+                        ? isBreach
+                          ? "error.main"
+                          : "warning.main"
+                        : "grey.400";
+                  return (
+                    <Stack key={h.id} direction="row" spacing={1.5}>
+                      <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                        <Box
+                          sx={{
+                            width: 10,
+                            height: 10,
+                            mt: 0.75,
+                            borderRadius: "50%",
+                            flexShrink: 0,
+                            bgcolor: dotColor,
+                          }}
                         />
-                      )}
-                      <Typography variant="caption">→</Typography>
-                      <Chip
-                        label={t(`requests.status.${h.new_status}`)}
-                        size="small"
-                        sx={{
-                          bgcolor:
-                            STATUS_COLOR[h.new_status as RequestStatus] + "15",
-                          color: STATUS_COLOR[h.new_status as RequestStatus],
-                          fontWeight: 600,
-                        }}
-                      />
+                        {!isLast && <Box sx={{ flexGrow: 1, width: 2, my: 0.5, bgcolor: "divider" }} />}
+                      </Box>
+                      <Box sx={{ pb: isLast ? 0 : 2.5, minWidth: 0 }}>
+                        {isCreate && (
+                          <Typography variant="body2" fontWeight={700}>
+                            {t("requests.historyCreated")}
+                          </Typography>
+                        )}
+                        {isTransition && (
+                          <Typography variant="body2" fontWeight={700}>
+                            <Box component="span" sx={{ color: "text.secondary", fontWeight: 500 }}>
+                              {t(`requests.status.${h.old_status}`)}
+                            </Box>
+                            {" → "}
+                            <Box component="span" sx={{ color }}>
+                              {t(`requests.status.${h.new_status}`)}
+                            </Box>
+                          </Typography>
+                        )}
+                        {slaMatch && (
+                          <Typography
+                            variant="body2"
+                            fontWeight={700}
+                            color={isBreach ? "error.main" : "warning.main"}
+                          >
+                            {isBreach ? t("requests.historySlaBreach") : t("requests.historySlaWarning")}
+                          </Typography>
+                        )}
+                        {comment && (
+                          <Typography
+                            variant="body2"
+                            color={isCreate || isTransition || slaMatch ? "text.secondary" : "text.primary"}
+                            sx={{ wordBreak: "break-word" }}
+                          >
+                            {comment}
+                          </Typography>
+                        )}
+                        <Typography variant="caption" color="text.disabled" display="block" mt={0.25}>
+                          {h.changed_by_name && (
+                            <>
+                              {h.changed_by_name}
+                              {h.changed_by_role && ` · ${t(`role.${h.changed_by_role}`)}`}
+                              {" — "}
+                            </>
+                          )}
+                          {formatDateTime(h.created_at)}
+                        </Typography>
+                      </Box>
                     </Stack>
-                    {h.comment && (
-                      <Typography variant="body2" color="text.secondary" mt={0.5}>
-                        {h.comment}
-                      </Typography>
-                    )}
-                    <Typography variant="caption" color="text.disabled" display="block">
-                      {h.changed_by_name && (
-                        <>
-                          {h.changed_by_name}
-                          {h.changed_by_role && ` · ${t(`role.${h.changed_by_role}`)}`}
-                          {" — "}
-                        </>
-                      )}
-                      {new Date(h.created_at).toLocaleString()}
-                    </Typography>
-                  </Box>
-                ))}
-              </Stack>
+                  );
+                })}
+              </Box>
             </CardContent>
           </Card>
-        </Box>
+        </Stack>
       </Stack>
 
       {assignOpen && (
@@ -495,15 +389,70 @@ export default function RequestDetailPage() {
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function FileRow({
+  file,
+  onDownload,
+}: {
+  file: RequestFileOut;
+  onDownload: (id: number, name: string) => void;
+}) {
+  const { t } = useTranslation();
   return (
-    <Stack direction="row" justifyContent="space-between" spacing={2}>
-      <Typography variant="caption" color="text.secondary">
-        {label}
-      </Typography>
-      <Typography variant="body2" fontWeight={600} textAlign="right" sx={{ maxWidth: "60%" }}>
-        {value}
-      </Typography>
+    <Stack
+      direction="row"
+      alignItems="center"
+      spacing={1}
+      sx={{ p: 1, border: "1px solid", borderColor: "divider", borderRadius: 1 }}
+    >
+      <AttachFileIcon fontSize="small" />
+      <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+        <Typography variant="body2" fontWeight={600} noWrap>
+          {file.file_name}
+        </Typography>
+        <Typography variant="caption" color="text.secondary">
+          {(file.file_size / 1024).toFixed(1)} KB · {formatDateTime(file.created_at)}
+        </Typography>
+      </Box>
+      <Tooltip title={t("requests.download")}>
+        <IconButton size="small" onClick={() => onDownload(file.id, file.file_name)}>
+          <DownloadIcon fontSize="small" />
+        </IconButton>
+      </Tooltip>
     </Stack>
+  );
+}
+
+function InfoItem({
+  label,
+  action,
+  children,
+}: {
+  label: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <Box>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" minHeight={24}>
+        <Typography variant="caption" color="text.secondary">
+          {label}
+        </Typography>
+        {action}
+      </Stack>
+      {children}
+    </Box>
+  );
+}
+
+function InfoValue({ children, muted }: { children: React.ReactNode; muted?: boolean }) {
+  return (
+    <Typography
+      variant="body2"
+      fontWeight={600}
+      color={muted ? "text.secondary" : "text.primary"}
+      sx={{ wordBreak: "break-word" }}
+    >
+      {children}
+    </Typography>
   );
 }

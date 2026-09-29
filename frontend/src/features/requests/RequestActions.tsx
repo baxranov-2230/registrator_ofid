@@ -17,27 +17,23 @@ import {
   useTransitionRequestMutation,
   type RequestDetail,
 } from "@/features/requests/requestsApi";
-import {
-  canRunAction,
-  TRANSITION_ACTIONS,
-  type TransitionAction,
-} from "@/features/requests/statusMeta";
+import { TRANSITION_ACTIONS, type TransitionAction } from "@/features/requests/statusMeta";
+import AnswerDialog from "@/features/requests/AnswerDialog";
 import { formatApiError } from "@/shared/api/errors";
 
 interface Props {
   request: RequestDetail;
-  role: string | undefined;
 }
 
 /**
  * Workflow controls as named buttons.
  *
- * Previously this was a bare status dropdown plus a generic confirm button, so
- * the operator had to know the state machine to use it. Each allowed transition
- * is now its own verb ("Qabul qilish", "Rad etish"), and the destructive ones
- * open a dialog that requires a reason before they will submit.
+ * Each allowed step is its own verb ("Javob berish", "Qaytarish") with a line
+ * beside it saying what pressing it changes, so the operator does not have to
+ * know the state machine. "Javob berish" opens the final-answer form; a return
+ * opens a dialog that will not submit without a reason.
  */
-export default function RequestActions({ request, role }: Props) {
+export default function RequestActions({ request }: Props) {
   const { t } = useTranslation();
   const [transition, transitionState] = useTransitionRequestMutation();
 
@@ -45,9 +41,7 @@ export default function RequestActions({ request, role }: Props) {
   const [comment, setComment] = useState("");
   const [err, setErr] = useState<string | null>(null);
 
-  const actions = (TRANSITION_ACTIONS[request.status] ?? []).filter((a) =>
-    canRunAction(a, role),
-  );
+  const actions = TRANSITION_ACTIONS[request.status] ?? [];
 
   const close = () => {
     setPending(null);
@@ -73,44 +67,52 @@ export default function RequestActions({ request, role }: Props) {
     }
   };
 
-  if (actions.length === 0) {
-    return (
-      <Typography variant="body2" color="text.secondary">
-        {t("requests.noActions")}
-      </Typography>
-    );
-  }
+  // Closed requests have nothing to do; the status box above already says so.
+  if (actions.length === 0) return null;
 
   return (
     <Box>
-      <Typography variant="subtitle2" fontWeight={700}>
+      <Typography variant="subtitle2" fontWeight={700} mb={1.5}>
         {t("requests.actionsTitle")}
       </Typography>
-      <Typography variant="caption" color="text.secondary">
-        {t("requests.actionsHint")}
-      </Typography>
 
-      <Stack direction="row" spacing={1.5} mt={1.5} flexWrap="wrap" useFlexGap>
-        {actions.map((a) => (
-          <Button
+      <Stack spacing={1.5}>
+        {actions.map((a, i) => (
+          <Stack
             key={a.to}
-            variant={a.color === "primary" || a.color === "success" ? "contained" : "outlined"}
-            color={a.color}
-            onClick={() => setPending(a)}
-            disabled={transitionState.isLoading}
+            direction={{ xs: "column", sm: "row" }}
+            spacing={{ xs: 0.75, sm: 2 }}
+            alignItems={{ sm: "center" }}
           >
-            {t(a.labelKey)}
-          </Button>
+            <Button
+              // The first action is the normal next step; the rest are detours.
+              variant={i === 0 ? "contained" : "outlined"}
+              color={a.color}
+              onClick={() => setPending(a)}
+              disabled={transitionState.isLoading}
+              sx={{ minWidth: 170, flexShrink: 0 }}
+            >
+              {t(a.labelKey)}
+            </Button>
+            <Typography variant="body2" color="text.secondary">
+              {t(a.hintKey)}
+            </Typography>
+          </Stack>
         ))}
       </Stack>
 
-      <Dialog open={pending !== null} onClose={close} fullWidth maxWidth="sm">
+      {pending?.kind === "answer" && <AnswerDialog requestId={request.id} onClose={close} />}
+
+      <Dialog open={pending?.kind === "transition"} onClose={close} fullWidth maxWidth="sm">
         {pending && (
           <>
             <DialogTitle>
               {t("requests.confirmAction", { action: t(pending.labelKey) })}
             </DialogTitle>
             <DialogContent>
+              <Typography variant="body2" color="text.secondary" mb={2}>
+                {t(pending.hintKey)}
+              </Typography>
               {err && (
                 <Alert severity="error" sx={{ mb: 2 }}>
                   {err}
@@ -121,7 +123,11 @@ export default function RequestActions({ request, role }: Props) {
                 fullWidth
                 multiline
                 minRows={3}
-                label={t("requests.commentFor", { action: t(pending.labelKey) })}
+                label={
+                  pending.commentRequired
+                    ? t("requests.reasonForStudent")
+                    : t("requests.transitionComment")
+                }
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 required={pending.commentRequired}

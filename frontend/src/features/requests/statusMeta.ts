@@ -16,93 +16,94 @@ export const PRIORITY_COLOR: Record<string, string> = {
   critical: "#DC2626",
 };
 
+/** Filter order: the live flow first, then the legacy triage states. */
 export const STATUS_ORDER: RequestStatus[] = [
   "new",
-  "accepted",
   "in_progress",
   "returned",
   "completed",
+  "accepted",
   "rejected",
 ];
 
 /**
- * The pipeline a request walks in the normal case. `returned` and `rejected`
- * are deliberately absent: they are detours off this line, not stops on it, and
- * the stepper renders them as a separate state instead of a numbered step.
+ * The pipeline a request walks: filed, worked, answered. `returned` is a
+ * detour off this line, not a stop on it, so the stepper shows it as a
+ * separate state instead of a numbered step.
  */
-export const PROGRESS_STEPS: RequestStatus[] = [
-  "new",
-  "accepted",
-  "in_progress",
-  "completed",
-];
+export const PROGRESS_STEPS: RequestStatus[] = ["new", "in_progress", "completed"];
 
-/** Index of a status on the happy path, or -1 for the off-path states. */
+/** Index of a status on the pipeline, or -1 for the off-path states. */
 export function progressIndex(status: RequestStatus): number {
-  return PROGRESS_STEPS.indexOf(status);
+  // A legacy `accepted` request is with its handler, i.e. being worked.
+  return PROGRESS_STEPS.indexOf(status === "accepted" ? "in_progress" : status);
 }
 
 type ButtonColor = "primary" | "success" | "warning" | "error" | "inherit";
 
 /**
- * A transition presented as an action the user takes, rather than a target
+ * A workflow step presented as an action the user takes, rather than a target
  * state they must pick out of a dropdown. `labelKey` uses the verb form
- * ("Qabul qilish"), so the button says what pressing it does.
+ * ("Javob berish"), so the button says what pressing it does.
  */
 export interface TransitionAction {
   to: RequestStatus;
+  /**
+   * `answer` opens the final-answer form (text and files) — the only way a
+   * request is closed. `transition` is a plain status move.
+   */
+  kind: "transition" | "answer";
   labelKey: string;
+  /** One line saying what pressing the button changes, shown beside it. */
+  hintKey: string;
   color: ButtonColor;
-  /** Require a reason before allowing the action — refusals need explaining. */
+  /** Require a reason before allowing the action — a return must be explained. */
   commentRequired?: boolean;
 }
 
-const ACCEPT: TransitionAction = {
-  to: "accepted",
-  labelKey: "requests.accept",
-  color: "primary",
-};
 const START: TransitionAction = {
   to: "in_progress",
+  kind: "transition",
   labelKey: "requests.startWork",
+  hintKey: "requests.startWorkHint",
   color: "primary",
 };
-const COMPLETE: TransitionAction = {
-  to: "completed",
-  labelKey: "requests.complete",
-  color: "success",
+const RESUME: TransitionAction = {
+  to: "in_progress",
+  kind: "transition",
+  labelKey: "requests.resume",
+  hintKey: "requests.resumeHint",
+  color: "primary",
 };
-const REJECT: TransitionAction = {
-  to: "rejected",
-  labelKey: "requests.reject",
-  color: "error",
-  commentRequired: true,
+const ANSWER: TransitionAction = {
+  to: "completed",
+  kind: "answer",
+  labelKey: "requests.answerAction",
+  hintKey: "requests.answerHint",
+  color: "success",
 };
 const RETURN: TransitionAction = {
   to: "returned",
+  kind: "transition",
   labelKey: "requests.return",
+  hintKey: "requests.returnHint",
   color: "warning",
   commentRequired: true,
 };
 
 /**
- * Mirrors `_ALLOWED_TRANSITIONS` in the backend request service. The server
- * remains the authority — this only decides which buttons to render.
+ * Mirrors `_ALLOWED_TRANSITIONS` plus the answer endpoint in the backend. The
+ * server remains the authority — this only decides which buttons to render.
+ * There is no accept or reject: neither is an outcome, the answer is.
  */
 export const TRANSITION_ACTIONS: Record<RequestStatus, TransitionAction[]> = {
-  new: [ACCEPT, RETURN, REJECT],
-  accepted: [START, RETURN, REJECT],
-  in_progress: [COMPLETE, RETURN, REJECT],
-  returned: [ACCEPT],
+  new: [START, ANSWER, RETURN],
+  accepted: [START, ANSWER, RETURN],
+  in_progress: [ANSWER, RETURN],
+  returned: [RESUME, ANSWER],
   completed: [],
   rejected: [],
 };
-
-/** Returning a request to the student is a triage privilege (backend A-02). */
-export function canRunAction(action: TransitionAction, role: string | undefined): boolean {
-  if (action.to === "returned") return role === "registrator" || role === "admin";
-  return true;
-}
 
 type ChipColor = "info" | "secondary" | "warning" | "success" | "error" | "default";
 

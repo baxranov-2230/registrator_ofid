@@ -57,7 +57,9 @@ async def test_student_can_resubmit_a_returned_request(client, login, seeded, se
     )
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    assert body["status"] == "new"
+    # Back to the same handler, not to a triage queue.
+    assert body["status"] == "in_progress"
+    assert body["assigned_to"] == req["assigned_to"]
     assert body["sla_paused_at"] is None
     # The paused time is given back, so the deadline cannot move earlier.
     assert body["sla_deadline"] >= req["sla_deadline"]
@@ -74,8 +76,10 @@ async def test_closed_request_accepts_no_public_messages_or_files(client, login,
     student = await login(Role.STUDENT)
     registrator = await login(Role.REGISTRATOR)
     req = (await _file(client, student, seeded)).json()
-    rejected = await _transition(client, registrator, req["id"], "rejected", "Asossiz")
-    assert rejected.status_code == 200
+    answered = await client.post(
+        f"/api/v1/requests/{req['id']}/answer", headers=registrator, data={"text": "Javob"}
+    )
+    assert answered.status_code == 200, answered.text
 
     msg = await client.post(
         f"/api/v1/requests/{req['id']}/messages", headers=student, json={"content": "Nega?"}
@@ -124,7 +128,8 @@ async def test_status_change_is_published_as_signed_webhook(
     student = await login(Role.STUDENT)
     registrator = await login(Role.REGISTRATOR)
     req = (await _file(client, student, seeded)).json()
-    assert (await _transition(client, registrator, req["id"], "accepted")).status_code == 200
+    returned = await _transition(client, registrator, req["id"], "returned", "Hujjat kerak")
+    assert returned.status_code == 200
 
     async with session_factory() as db:
         rows = (
@@ -139,8 +144,9 @@ async def test_status_change_is_published_as_signed_webhook(
     events = [r.payload["event"] for r in rows]
     assert events == ["request.created", "request.status_changed"]
     changed = rows[1].payload["data"]
-    assert changed["status"] == "accepted"
-    assert changed["old_status"] == "new"
+    assert changed["status"] == "returned"
+    assert changed["old_status"] == "in_progress"
+    assert changed["comment"] == "Hujjat kerak"
     assert changed["student_hemis_id"] == "STU-TEST-1"
 
     sent: list[tuple[bytes, dict]] = []

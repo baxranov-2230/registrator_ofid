@@ -11,9 +11,10 @@ export default function RegistratorInboxPage() {
       detailBasePath="/registrator/requests"
       showAssignee
       triageFilters
-      // Routing lands each faculty's requests on its registrator; that queue is
-      // what they open the inbox for. "All" is one click away.
-      defaultLens="mine"
+      // Requests are routed straight to the faculty's staff, so the registrator
+      // opens the inbox to oversee all of them; "mine" holds only the ones that
+      // fell back to them because a faculty had no staff bound.
+      defaultLens=""
     />
   );
 }

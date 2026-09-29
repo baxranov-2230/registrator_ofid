@@ -11,7 +11,7 @@ STATUS_LABELS: dict[str, str] = {
     RequestStatus.NEW: "Yangi",
     RequestStatus.ACCEPTED: "Qabul qilindi",
     RequestStatus.IN_PROGRESS: "Jarayonda",
-    RequestStatus.COMPLETED: "Bajarildi",
+    RequestStatus.COMPLETED: "Javob berildi",
     RequestStatus.REJECTED: "Rad etildi",
     RequestStatus.RETURNED: "Qaytarildi",
 }

@@ -1,99 +1,128 @@
 import { useTranslation } from "react-i18next";
-import { Alert, Box, Step, StepLabel, Stepper, Typography } from "@mui/material";
+import { Box, Step, StepLabel, Stepper, Typography } from "@mui/material";
+import CancelIcon from "@mui/icons-material/Cancel";
+import ReplyIcon from "@mui/icons-material/Reply";
 
-import type { RequestStatus } from "@/features/requests/requestsApi";
-import { PROGRESS_STEPS, progressIndex } from "@/features/requests/statusMeta";
-
-const STEP_LABEL_KEYS: Record<string, { label: string; hint: string }> = {
-  new: { label: "requests.stepNew", hint: "requests.stepNewHint" },
-  accepted: { label: "requests.stepAccepted", hint: "requests.stepAcceptedHint" },
-  in_progress: { label: "requests.stepInProgress", hint: "requests.stepInProgressHint" },
-  completed: { label: "requests.stepCompleted", hint: "requests.stepCompletedHint" },
-};
+import type { RequestHistoryOut, RequestStatus } from "@/features/requests/requestsApi";
+import { formatDateTime } from "@/features/requests/format";
+import { PROGRESS_STEPS, progressIndex, STATUS_COLOR } from "@/features/requests/statusMeta";
 
 interface Props {
   status: RequestStatus;
-  /** Latest history comment, used to explain a return or a rejection. */
-  lastComment?: string | null;
+  history: RequestHistoryOut[];
+}
+
+/** Latest history entry that moved the request *into* `status`. */
+function lastEntryInto(history: RequestHistoryOut[], status: string) {
+  for (let i = history.length - 1; i >= 0; i -= 1) {
+    const h = history[i];
+    if (h.new_status === status && h.old_status !== h.new_status) return h;
+  }
+  return null;
 }
 
 /**
- * Shows where a request stands in the pipeline.
+ * Where the request stands, in two parts: a stepper over the normal pipeline,
+ * and a plain-language box saying what the current state means and what is
+ * expected next.
  *
- * `returned` and `rejected` are off the happy path, so instead of inventing a
- * step for them the stepper freezes at the step the request left and an alert
- * explains what happened and what the reader should do next.
+ * Step labels are the status names themselves, so the chip at the top of the
+ * page ("Yangi") and the highlighted step ("Yangi") always agree. Reached steps
+ * show when they were reached; later steps say what will happen there.
+ *
+ * `returned` and `rejected` are detours rather than stops. The stepper marks
+ * the step the request left from, and the box underneath gives the reason.
  */
-export default function RequestProgress({ status, lastComment }: Props) {
+export default function RequestProgress({ status, history }: Props) {
   const { t } = useTranslation();
 
-  const activeIndex = progressIndex(status);
   const isReturned = status === "returned";
   const isRejected = status === "rejected";
-  const isCompleted = status === "completed";
   const offPath = isReturned || isRejected;
+  const entry = lastEntryInto(history, status);
+
+  // For a detour, the step it left from; otherwise the current step.
+  const activeIndex = offPath
+    ? Math.max(0, progressIndex((entry?.old_status ?? "new") as RequestStatus))
+    : progressIndex(status);
+
+  const reason = offPath ? entry?.comment : null;
+  const color = STATUS_COLOR[status];
 
   return (
     <Box>
-      <Typography variant="subtitle2" fontWeight={700} mb={0.5}>
-        {t("requests.progressTitle")}
-      </Typography>
-      {!offPath && (
-        <Typography variant="caption" color="text.secondary">
-          {t("requests.progressStep", {
-            current: activeIndex + 1,
-            total: PROGRESS_STEPS.length,
-          })}
-        </Typography>
-      )}
+      <Stepper activeStep={activeIndex} alternativeLabel>
+        {PROGRESS_STEPS.map((step, i) => {
+          const isDetourStep = offPath && i === activeIndex;
+          const reached = i <= activeIndex;
+          const done = i < activeIndex || (status === "completed" && i === activeIndex);
+          const reachedAt = isDetourStep
+            ? entry?.created_at
+            : reached
+              ? (lastEntryInto(history, step) ??
+                  // Legacy rows reached the working step through `accepted`.
+                  (step === "in_progress" ? lastEntryInto(history, "accepted") : null))
+                  ?.created_at
+              : undefined;
 
-      <Stepper
-        activeStep={offPath ? 0 : activeIndex}
-        alternativeLabel
-        // A rejected or returned request has stopped moving; greying the line
-        // keeps it from reading as "still in flight".
-        sx={{ mt: 2, opacity: offPath ? 0.5 : 1 }}
-      >
-        {PROGRESS_STEPS.map((step, i) => (
-          <Step key={step} completed={!offPath && i < activeIndex}>
-            <StepLabel
-              optional={
-                <Typography variant="caption" color="text.secondary">
-                  {t(STEP_LABEL_KEYS[step].hint)}
-                </Typography>
-              }
-            >
-              {t(STEP_LABEL_KEYS[step].label)}
-            </StepLabel>
-          </Step>
-        ))}
+          return (
+            <Step key={step} completed={done}>
+              <StepLabel
+                error={isRejected && isDetourStep}
+                icon={
+                  isDetourStep ? (
+                    isRejected ? (
+                      <CancelIcon color="error" />
+                    ) : (
+                      <ReplyIcon sx={{ color: STATUS_COLOR.returned }} />
+                    )
+                  ) : undefined
+                }
+                optional={
+                  <Typography
+                    variant="caption"
+                    color={reached ? "text.secondary" : "text.disabled"}
+                    display="block"
+                  >
+                    {/* A rejected request will never reach the later steps,
+                        so they get no "what happens here" hint. */}
+                    {reachedAt
+                      ? formatDateTime(reachedAt)
+                      : reached || isRejected
+                        ? ""
+                        : t(`requests.stepHint.${step}`)}
+                  </Typography>
+                }
+              >
+                {t(`requests.status.${isDetourStep ? status : step}`)}
+              </StepLabel>
+            </Step>
+          );
+        })}
       </Stepper>
 
-      {isReturned && (
-        <Alert severity="warning" sx={{ mt: 2 }}>
-          {t("requests.returnedBanner")}
-          {lastComment && (
-            <Typography variant="body2" fontWeight={600} mt={0.5}>
-              {lastComment}
-            </Typography>
-          )}
-        </Alert>
-      )}
-      {isRejected && (
-        <Alert severity="error" sx={{ mt: 2 }}>
-          {t("requests.rejectedBanner")}
-          {lastComment && (
-            <Typography variant="body2" fontWeight={600} mt={0.5}>
-              {lastComment}
-            </Typography>
-          )}
-        </Alert>
-      )}
-      {isCompleted && (
-        <Alert severity="success" sx={{ mt: 2 }}>
-          {t("requests.completedBanner")}
-        </Alert>
-      )}
+      <Box
+        sx={{
+          mt: 3,
+          p: 2,
+          borderRadius: 1,
+          borderLeft: "4px solid",
+          borderColor: color,
+          bgcolor: color + "0F",
+        }}
+      >
+        <Typography variant="subtitle1" fontWeight={700} sx={{ color }}>
+          {t(`requests.guide.${status}.title`)}
+        </Typography>
+        <Typography variant="body2" color="text.secondary" mt={0.5}>
+          {t(`requests.guide.${status}.body`)}
+        </Typography>
+        {reason && (
+          <Typography variant="body2" mt={1}>
+            <strong>{t("requests.reasonLabel")}:</strong> {reason}
+          </Typography>
+        )}
+      </Box>
     </Box>
   );
 }

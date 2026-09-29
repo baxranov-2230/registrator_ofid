@@ -18,13 +18,10 @@ async def _file_and_complete(client, login, seeded) -> None:
             json={"category_id": seeded["category_id"], "title": "KPI", "description": "Matn"},
         )
     ).json()
-    for status in ("accepted", "in_progress", "completed"):
-        resp = await client.post(
-            f"/api/v1/requests/{req['id']}/transition",
-            headers=registrator,
-            json={"status": status},
-        )
-        assert resp.status_code == 200, resp.text
+    resp = await client.post(
+        f"/api/v1/requests/{req['id']}/answer", headers=registrator, data={"text": "Bajarildi"}
+    )
+    assert resp.status_code == 200, resp.text
 
 
 @pytest.mark.parametrize("group_by", ["staff", "faculty", "department", "service_type"])

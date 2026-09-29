@@ -2,6 +2,7 @@ from fastapi import (
     APIRouter,
     Depends,
     File,
+    Form,
     Header,
     HTTPException,
     Query,
@@ -40,6 +41,8 @@ from app.services.labels import status_label
 from app.services.notification_service import create_notification
 from app.services.outbox_service import enqueue_email
 from app.services.request_service import (
+    answer_request,
+    assert_can_answer,
     assert_open,
     assign_request,
     create_request,
@@ -238,10 +241,15 @@ async def post_message(
 
 
 async def attach_file(
-    db: AsyncSession, req: RequestModel, uploader: User, upload: UploadFile
+    db: AsyncSession,
+    req: RequestModel,
+    uploader: User,
+    upload: UploadFile,
+    *,
+    is_answer: bool = False,
 ) -> RequestFileOut:
     meta = await save_upload(upload, request_id=req.id, uploader_id=uploader.id)
-    record = RequestFile(request_id=req.id, uploaded_by=uploader.id, **meta)
+    record = RequestFile(request_id=req.id, uploaded_by=uploader.id, is_answer=is_answer, **meta)
     db.add(record)
     await db.flush()
     await log_action(
@@ -262,6 +270,7 @@ async def attach_file(
             "file_size": record.file_size,
             "mime_type": record.mime_type,
             "from_student": uploader.id == req.student_id,
+            "is_answer": is_answer,
         },
     )
     return RequestFileOut.model_validate(record)
@@ -484,6 +493,79 @@ async def transition(
     return await _detail_for(db, req.id, actor)
 
 
+#: Enough for a document and its annexes; more is a sign of the wrong channel.
+MAX_ANSWER_FILES = 10
+
+
+@router.post("/{request_id}/answer", response_model=RequestDetail)
+async def answer(
+    request_id: int,
+    text: str = Form(..., min_length=1, max_length=10000),
+    files: list[UploadFile] = File(default=[]),
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_roles(*Role.CAN_TRANSITION)),
+) -> RequestDetail:
+    """ "Javob berish": send the final answer, with optional files, and close.
+
+    This is the only way a request is completed. Accepting, returning or
+    rejecting are not outcomes; the student is always left with an answer.
+    """
+    req = await get_request_for_user(db, request_id, actor, with_details=False)
+    # Checked before any file touches the disk.
+    assert_can_answer(req, actor)
+    if len(files) > MAX_ANSWER_FILES:
+        raise HTTPException(
+            status_code=422, detail=f"Javobga ko'pi bilan {MAX_ANSWER_FILES} ta fayl biriktiring"
+        )
+
+    attached = [await attach_file(db, req, actor, f, is_answer=True) for f in files]
+    old_status = req.status
+    await answer_request(db, req=req, actor=actor, text=text)
+    await log_action(
+        db,
+        user_id=actor.id,
+        action="request.answer",
+        entity_type="request",
+        entity_id=req.id,
+        old_value={"status": old_status},
+        new_value={"status": req.status, "files": [f.file_name for f in attached]},
+    )
+
+    await _notify_user(
+        db,
+        req.student_id,
+        type_=NotificationType.REQUEST_STATUS,
+        title=f"Murojaatingizga javob berildi: {req.tracking_no}",
+        lines=[f"'{req.title}' murojaatingiz bo'yicha yakuniy javob:", req.answer_text or ""],
+        req=req,
+        link_base="/student/requests",
+    )
+    await events.publish(
+        db,
+        events.REQUEST_STATUS_CHANGED,
+        req,
+        old_status=old_status,
+        comment=None,
+        answer={
+            "text": req.answer_text,
+            "answered_at": req.answered_at.isoformat() if req.answered_at else None,
+            "answered_by_name": actor.full_name,
+            "files": [
+                {
+                    "id": f.id,
+                    "file_name": f.file_name,
+                    "file_size": f.file_size,
+                    "mime_type": f.mime_type,
+                }
+                for f in attached
+            ],
+        },
+    )
+
+    await db.commit()
+    return await _detail_for(db, req.id, actor)
+
+
 @router.post("/{request_id}/resubmit", response_model=RequestDetail)
 async def resubmit(
     request_id: int,
@@ -495,7 +577,8 @@ async def resubmit(
 
     Returning used to be a dead end: only staff could move a request out of
     `returned`, so the student could add files and messages but never say
-    "done". This moves it back to `new` and restarts the paused SLA clock.
+    "done". This hands it back to its handler (`in_progress`) and restarts the
+    paused SLA clock.
     """
     req = await get_request_for_user(db, request_id, student, with_details=False)
     await resubmit_returned(db, req, student, data.comment)

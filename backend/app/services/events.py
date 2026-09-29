@@ -7,8 +7,9 @@ them. Every change a student must learn about is published here as a webhook
 
 Event names are part of the integration contract (docs/INTEGRATION.md):
 
-  request.created          a request was filed
-  request.status_changed   status moved; `comment` explains a return/rejection
+  request.created          a request was filed (already routed: `in_progress`)
+  request.status_changed   status moved; `comment` explains a return, and
+                           `answer` carries the final answer on completion
   request.message_created  a message visible to the student was posted
   request.file_added       a file was attached (e.g. the finished document)
 """

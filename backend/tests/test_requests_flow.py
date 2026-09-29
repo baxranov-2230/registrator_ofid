@@ -2,6 +2,7 @@
 
 import pytest
 
+from app.core.config import settings
 from app.models.role import Role
 
 
@@ -19,36 +20,36 @@ async def _create_request(client, headers, seeded, title="Ma'lumotnoma kerak"):
     return resp.json()
 
 
-async def test_full_lifecycle(client, login, seeded):
-    """student creates → registrator assigns → staff works it → completed."""
+async def test_full_lifecycle(client, login, seeded, monkeypatch, tmp_path):
+    """student files → routed straight to staff (in_progress) → staff answers."""
+    monkeypatch.setattr(settings, "storage_dir", str(tmp_path))
     student = await login(Role.STUDENT)
-    registrator = await login(Role.REGISTRATOR)
     staff = await login(Role.STAFF)
 
     req = await _create_request(client, student, seeded)
-    assert req["status"] == "new"
+    assert req["status"] == "in_progress"
+    assert req["assigned_to"] == seeded["user_ids"][Role.STAFF]
     assert req["tracking_no"].startswith("REQ-")
     assert req["is_overdue"] is False
+    assert [h["new_status"] for h in req["history"]] == ["new", "in_progress"]
 
-    assign = await client.post(
-        f"/api/v1/requests/{req['id']}/assign",
-        headers=registrator,
-        json={"assignee_id": seeded["user_ids"][Role.STAFF]},
+    resp = await client.post(
+        f"/api/v1/requests/{req['id']}/answer",
+        headers=staff,
+        data={"text": "Ma'lumotnoma tayyor, ilovada."},
+        files=[("files", ("malumotnoma.pdf", b"%PDF-1.4 test", "application/pdf"))],
     )
-    assert assign.status_code == 200, assign.text
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "completed"
+    assert body["closed_at"] is not None
+    assert body["answer"]["text"] == "Ma'lumotnoma tayyor, ilovada."
+    assert body["answer"]["answered_by"] == seeded["user_ids"][Role.STAFF]
+    assert [f["file_name"] for f in body["answer"]["files"]] == ["malumotnoma.pdf"]
 
-    for target in ("accepted", "in_progress", "completed"):
-        resp = await client.post(
-            f"/api/v1/requests/{req['id']}/transition",
-            headers=staff,
-            json={"status": target},
-        )
-        assert resp.status_code == 200, resp.text
-        assert resp.json()["status"] == target
-
-    assert (await client.get(f"/api/v1/requests/{req['id']}", headers=staff)).json()[
-        "closed_at"
-    ] is not None
+    # The student reads the outcome on their own copy of the request.
+    mine = (await client.get(f"/api/v1/requests/{req['id']}", headers=student)).json()
+    assert mine["answer"]["text"] == "Ma'lumotnoma tayyor, ilovada."
 
 
 async def test_invalid_transition_rejected(client, login, seeded):
@@ -56,7 +57,7 @@ async def test_invalid_transition_rejected(client, login, seeded):
     registrator = await login(Role.REGISTRATOR)
     req = await _create_request(client, student, seeded)
 
-    # new → completed skips the workflow and must be refused.
+    # Closing without an answer skips the workflow and must be refused.
     resp = await client.post(
         f"/api/v1/requests/{req['id']}/transition",
         headers=registrator,

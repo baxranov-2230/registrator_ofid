@@ -1,5 +1,9 @@
 import { api } from "@/shared/api/base";
 
+/**
+ * `accepted` and `rejected` come from the earlier triage flow. Nothing moves a
+ * request into them any more, but older rows still carry them.
+ */
 export type RequestStatus =
   | "new"
   | "accepted"
@@ -75,7 +79,18 @@ export interface RequestFileOut {
   file_name: string;
   file_size: number;
   mime_type: string;
+  /** Sent with the final answer rather than during the conversation. */
+  is_answer: boolean;
   created_at: string;
+}
+
+/** The final answer — what closed the request and what the student reads. */
+export interface RequestAnswerOut {
+  text: string;
+  answered_at: string;
+  answered_by: number | null;
+  answered_by_name: string | null;
+  files: RequestFileOut[];
 }
 
 export interface MessageOut {
@@ -100,6 +115,7 @@ export interface RequestDetail extends RequestSummary {
   history: RequestHistoryOut[];
   files: RequestFileOut[];
   messages: MessageOut[];
+  answer: RequestAnswerOut | null;
 }
 
 export interface AssigneeOut {
@@ -184,31 +200,22 @@ export const requestsApi = api.injectEndpoints({
         { type: "Stats", id: "DASHBOARD" },
       ],
     }),
-    addMessage: build.mutation<
-      MessageOut,
-      { id: number; content: string; is_internal?: boolean }
+    /** "Javob berish": the final answer with optional files; closes the request. */
+    answerRequest: build.mutation<
+      RequestDetail,
+      { id: number; text: string; files: File[] }
     >({
-      query: ({ id, content, is_internal = false }) => ({
-        url: `/requests/${id}/messages`,
-        method: "POST",
-        body: { content, is_internal },
-      }),
-      invalidatesTags: (_r, _e, { id }) => [{ type: "Request", id }],
-    }),
-    uploadRequestFile: build.mutation<
-      RequestFileOut,
-      { id: number; file: File }
-    >({
-      query: ({ id, file }) => {
+      query: ({ id, text, files }) => {
         const form = new FormData();
-        form.append("upload", file);
-        return {
-          url: `/requests/${id}/files`,
-          method: "POST",
-          body: form,
-        };
+        form.append("text", text);
+        files.forEach((f) => form.append("files", f));
+        return { url: `/requests/${id}/answer`, method: "POST", body: form };
       },
-      invalidatesTags: (_r, _e, { id }) => [{ type: "Request", id }],
+      invalidatesTags: (_r, _e, { id }) => [
+        { type: "Request", id },
+        { type: "Request", id: "LIST" },
+        { type: "Stats", id: "DASHBOARD" },
+      ],
     }),
     /**
      * Download through the shared base query so an expired access token is
@@ -231,7 +238,6 @@ export const {
   useGetRequestQuery,
   useAssignRequestMutation,
   useTransitionRequestMutation,
-  useAddMessageMutation,
-  useUploadRequestFileMutation,
+  useAnswerRequestMutation,
   useDownloadRequestFileMutation,
 } = requestsApi;

@@ -12,32 +12,28 @@ from app.models.request import RequestStatus
 from app.models.role import Role
 from app.services.catalog_service import resolve_service
 from app.services.labels import status_label
-from app.services.routing_service import resolve_assignee_for_student
+from app.services.routing_service import resolve_handler_for_student
 from app.services.sla_calendar import add_working_time, sla_deadline_from, working_time_between
 
 log = logging.getLogger(__name__)
 
 
+#: Moves a handler can make with `/transition`. None of them closes a request:
+#: that happens only through a final answer (`answer_request`), so accepting,
+#: returning or rejecting can never stand in for the outcome. `accepted` is a
+#: legacy state; its rows are picked up the same way as `new` ones.
 _ALLOWED_TRANSITIONS: dict[str, set[str]] = {
-    RequestStatus.NEW: {RequestStatus.ACCEPTED, RequestStatus.REJECTED, RequestStatus.RETURNED},
-    RequestStatus.ACCEPTED: {
-        RequestStatus.IN_PROGRESS,
-        RequestStatus.REJECTED,
-        RequestStatus.RETURNED,
-    },
-    RequestStatus.IN_PROGRESS: {
-        RequestStatus.COMPLETED,
-        RequestStatus.REJECTED,
-        RequestStatus.RETURNED,
-    },
-    RequestStatus.RETURNED: {RequestStatus.ACCEPTED, RequestStatus.NEW},
+    RequestStatus.NEW: {RequestStatus.IN_PROGRESS, RequestStatus.RETURNED},
+    RequestStatus.ACCEPTED: {RequestStatus.IN_PROGRESS, RequestStatus.RETURNED},
+    RequestStatus.IN_PROGRESS: {RequestStatus.RETURNED},
+    RequestStatus.RETURNED: {RequestStatus.IN_PROGRESS},
     RequestStatus.COMPLETED: set(),
     RequestStatus.REJECTED: set(),
 }
 
-#: Transitions that must say why. A returned student has to know what to fix,
-#: a rejected one why (Reglament 6.2).
-_COMMENT_REQUIRED = {RequestStatus.RETURNED, RequestStatus.REJECTED}
+#: Transitions that must say why. A returned student has to know what to fix
+#: (Reglament 6.2).
+_COMMENT_REQUIRED = {RequestStatus.RETURNED}
 
 
 def _aware(moment: datetime) -> datetime:
@@ -123,8 +119,9 @@ async def create_request(
     category = await resolve_service(db, service_type_id=service_type_id, service_id=category_id)
 
     # The student does not choose a handler. Routing is decided by their
-    # faculty, and refuses rather than guessing when no registrator is bound.
-    assignee = await resolve_assignee_for_student(db, student)
+    # faculty and department, and refuses rather than guessing when nobody is
+    # bound to them.
+    assignee = await resolve_handler_for_student(db, student)
 
     tracking_no = await generate_tracking_no(db, redis)
     # Working days only, per Reglament 7.3.
@@ -136,7 +133,8 @@ async def create_request(
         category_id=category.id,
         title=title.strip(),
         description=description.strip(),
-        status=RequestStatus.NEW,
+        # Routed on submission, so the handler owns it from the first moment.
+        status=RequestStatus.IN_PROGRESS,
         priority=category.priority,
         assigned_to=assignee.id,
         faculty_id=student.faculty_id,
@@ -148,15 +146,25 @@ async def create_request(
     db.add(req)
     await db.flush()
 
+    # Two entries, so the timeline reads "filed" then "routed" — the same
+    # new → in_progress steps the status line shows.
     db.add(
         RequestHistory(
             request_id=req.id,
             changed_by=student.id,
             old_status=None,
             new_status=RequestStatus.NEW,
-            comment=(
-                f"Yaratildi va fakultet bo'yicha {assignee.full_name} ga avtomatik biriktirildi"
-            ),
+            comment="Murojaat yuborildi",
+        )
+    )
+    await db.flush()
+    db.add(
+        RequestHistory(
+            request_id=req.id,
+            changed_by=None,
+            old_status=RequestStatus.NEW,
+            new_status=RequestStatus.IN_PROGRESS,
+            comment=f"Avtomatik yo'naltirildi. Mas'ul xodim: {assignee.full_name}",
         )
     )
     await db.flush()
@@ -168,6 +176,7 @@ _DETAIL_LOADS = (
     selectinload(Request.category).selectinload(RequestCategory.parent),
     selectinload(Request.student),
     selectinload(Request.assignee),
+    selectinload(Request.answerer),
     selectinload(Request.faculty),
     selectinload(Request.department),
     # The actors are loaded with their rows so the detail payload can name them
@@ -241,7 +250,7 @@ async def assign_request(
             changed_by=actor.id,
             old_status=req.status,
             new_status=req.status,
-            comment=comment or f"Assigned to {assignee.full_name}",
+            comment=comment or f"Mas'ul xodim: {assignee.full_name}",
         )
     )
     await db.flush()
@@ -266,8 +275,11 @@ async def transition_request(
     if role in Role.READ_ONLY:
         raise HTTPException(status_code=403, detail="Rahbariyat roli faqat ko'rish huquqiga ega")
 
-    if new_status == RequestStatus.RETURNED and role not in Role.CAN_TRIAGE:
-        raise HTTPException(status_code=403, detail="Faqat registrator qaytara oladi")
+    if new_status == RequestStatus.COMPLETED:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Murojaat faqat «Javob berish» orqali yakuniy javob bilan yopiladi",
+        )
 
     if new_status not in allowed:
         raise HTTPException(
@@ -278,14 +290,10 @@ async def transition_request(
             ),
         )
 
-    if role == Role.STAFF and req.assigned_to != actor.id:
-        raise HTTPException(status_code=403, detail="Bu sizning murojaatingiz emas")
+    _assert_handler(req, actor)
 
     if new_status in _COMMENT_REQUIRED and not (comment or "").strip():
-        raise HTTPException(
-            status_code=422,
-            detail="Qaytarish yoki rad etish sababini izohda yozing",
-        )
+        raise HTTPException(status_code=422, detail="Qaytarish sababini izohda yozing")
 
     old = req.status
     _apply_status(req, new_status)
@@ -297,6 +305,50 @@ async def transition_request(
             old_status=old,
             new_status=new_status,
             comment=comment,
+        )
+    )
+    await db.flush()
+    return req
+
+
+def _assert_handler(req: Request, actor: User) -> None:
+    """Staff act only on requests assigned to them; triage roles on any."""
+    if actor.role_name in Role.READ_ONLY:
+        raise HTTPException(status_code=403, detail="Rahbariyat roli faqat ko'rish huquqiga ega")
+    if actor.role_name == Role.STAFF and req.assigned_to != actor.id:
+        raise HTTPException(status_code=403, detail="Bu sizning murojaatingiz emas")
+
+
+def assert_can_answer(req: Request, actor: User) -> None:
+    """Checks for "Javob berish", run before any answer file is written."""
+    _assert_handler(req, actor)
+    assert_open(req)
+
+
+async def answer_request(db: AsyncSession, *, req: Request, actor: User, text: str) -> Request:
+    """Record the final answer and close the request.
+
+    This is the only way a request reaches `completed`. The answer's files are
+    attached by the caller, flagged `is_answer`, before this runs.
+    """
+    assert_can_answer(req, actor)
+    text = text.strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="Javob matnini yozing")
+
+    old = req.status
+    req.answer_text = text
+    req.answered_at = datetime.now(UTC)
+    req.answered_by = actor.id
+    _apply_status(req, RequestStatus.COMPLETED)
+
+    db.add(
+        RequestHistory(
+            request_id=req.id,
+            changed_by=actor.id,
+            old_status=old,
+            new_status=RequestStatus.COMPLETED,
+            comment="Yakuniy javob yuborildi",
         )
     )
     await db.flush()
@@ -341,13 +393,14 @@ async def resubmit_request(
             status_code=status.HTTP_409_CONFLICT,
             detail="Faqat qaytarilgan murojaatni qayta yuborish mumkin",
         )
-    _apply_status(req, RequestStatus.NEW)
+    # It goes back to the same handler, who picks up where they left off.
+    _apply_status(req, RequestStatus.IN_PROGRESS)
     db.add(
         RequestHistory(
             request_id=req.id,
             changed_by=student.id,
             old_status=RequestStatus.RETURNED,
-            new_status=RequestStatus.NEW,
+            new_status=RequestStatus.IN_PROGRESS,
             comment=comment or "Talaba murojaatni to'ldirib qayta yubordi",
         )
     )

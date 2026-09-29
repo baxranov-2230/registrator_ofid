@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  canRunAction,
+  PROGRESS_STEPS,
+  progressIndex,
   STATUS_ORDER,
   TRANSITION_ACTIONS,
 } from "@/features/requests/statusMeta";
@@ -12,20 +13,27 @@ describe("workflow buttons", () => {
     expect(TRANSITION_ACTIONS.rejected).toEqual([]);
   });
 
-  it("requires a reason for returning and rejecting, as the server does", () => {
+  it("requires a reason for returning, as the server does", () => {
     const actions = Object.values(TRANSITION_ACTIONS).flat();
     for (const action of actions) {
-      if (action.to === "returned" || action.to === "rejected") {
-        expect(action.commentRequired).toBe(true);
-      }
+      if (action.to === "returned") expect(action.commentRequired).toBe(true);
     }
   });
 
-  it("lets only triage roles return a request", () => {
-    const ret = TRANSITION_ACTIONS.new.find((a) => a.to === "returned")!;
-    expect(canRunAction(ret, "registrator")).toBe(true);
-    expect(canRunAction(ret, "admin")).toBe(true);
-    expect(canRunAction(ret, "staff")).toBe(false);
+  it("closes a request only through the answer form", () => {
+    const actions = Object.values(TRANSITION_ACTIONS).flat();
+    for (const action of actions) {
+      expect(action.to).not.toBe("rejected");
+      expect(action.to).not.toBe("accepted");
+      if (action.to === "completed") expect(action.kind).toBe("answer");
+    }
+    expect(TRANSITION_ACTIONS.in_progress[0].kind).toBe("answer");
+  });
+
+  it("walks new → in_progress → completed, with legacy accepted as in progress", () => {
+    expect(PROGRESS_STEPS).toEqual(["new", "in_progress", "completed"]);
+    expect(progressIndex("accepted")).toBe(progressIndex("in_progress"));
+    expect(progressIndex("returned")).toBe(-1);
   });
 
   it("knows every status", () => {

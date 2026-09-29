@@ -9,6 +9,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -20,6 +21,18 @@ from app.models.user import User
 
 
 class RequestStatus:
+    """Workflow states.
+
+    The live flow is new → in_progress → completed, with a detour through
+    `returned` while the student supplies something. A request is routed to a
+    handler on submission, so it normally enters `in_progress` straight away;
+    it closes only through a final answer ("Javob berish").
+
+    `accepted` and `rejected` belong to the earlier triage flow. Nothing moves
+    a request into them any more, but existing rows keep them, so they stay
+    valid values.
+    """
+
     NEW = "new"
     ACCEPTED = "accepted"
     IN_PROGRESS = "in_progress"
@@ -72,9 +85,16 @@ class Request(Base, TimestampMixin):
     api_client_id: Mapped[int | None] = mapped_column(
         ForeignKey("api_clients.id", ondelete="SET NULL"), index=True
     )
+    #: The final answer. Writing it is what closes the request, and it is what
+    #: the student reads as the outcome. Files sent with it are the request's
+    #: files flagged `is_answer`.
+    answer_text: Mapped[str | None] = mapped_column(Text)
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    answered_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
 
     student: Mapped["User"] = relationship(foreign_keys=[student_id])
     assignee: Mapped["User | None"] = relationship(foreign_keys=[assigned_to])
+    answerer: Mapped["User | None"] = relationship(foreign_keys=[answered_by])
     category: Mapped["RequestCategory"] = relationship()
     faculty: Mapped["Faculty | None"] = relationship(foreign_keys=[faculty_id])
     department: Mapped["Department | None"] = relationship(foreign_keys=[department_id])
@@ -82,7 +102,9 @@ class Request(Base, TimestampMixin):
     history: Mapped[list["RequestHistory"]] = relationship(
         back_populates="request",
         cascade="all, delete-orphan",
-        order_by="RequestHistory.created_at",
+        # Submission writes two entries in one go (filed, then routed); the id
+        # keeps them in order when their timestamps tie.
+        order_by="[RequestHistory.created_at, RequestHistory.id]",
     )
     files: Mapped[list["RequestFile"]] = relationship(
         back_populates="request",
@@ -130,6 +152,10 @@ class RequestFile(Base):
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     file_size: Mapped[int] = mapped_column(BigInteger, nullable=False)
     mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
+    #: Sent as part of the final answer rather than during the conversation.
+    is_answer: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         default=lambda: datetime.now(UTC),

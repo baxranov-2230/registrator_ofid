@@ -135,11 +135,14 @@ def _utc_bounds(date_from: date, date_to: date) -> tuple[datetime, datetime]:
 
 async def _rows(db: AsyncSession, date_from: date, date_to: date) -> list[dict]:
     start, end = _utc_bounds(date_from, date_to)
+    # When the request was first taken into work. Under the old triage flow
+    # that was the move to `accepted`; requests are now routed straight into
+    # `in_progress`, so either counts.
     first_accepted = (
         select(func.min(RequestHistory.created_at))
         .where(
             RequestHistory.request_id == Request.id,
-            RequestHistory.new_status == RequestStatus.ACCEPTED,
+            RequestHistory.new_status.in_((RequestStatus.ACCEPTED, RequestStatus.IN_PROGRESS)),
         )
         .scalar_subquery()
     )

@@ -249,8 +249,10 @@ async def test_client_files_request_for_new_student(
     )
     assert resp.status_code == 201, resp.text
     req = resp.json()
-    # Routed through the supplied faculty to the registrator bound to it.
-    assert req["assigned_to"] == seeded["user_ids"][Role.REGISTRATOR]
+    # Routed through the supplied faculty straight to the staff member bound
+    # to it, and already being worked.
+    assert req["assigned_to"] == seeded["user_ids"][Role.STAFF]
+    assert req["status"] == "in_progress"
     assert req["faculty_id"] == seeded["faculty_id"]
     assert req["student"]["full_name"] == "Integratsiya Talabasi"
 
@@ -395,7 +397,7 @@ async def test_message_return_and_resubmit_as_student(
         json={"comment": "Yukladim"},
     )
     assert resubmitted.status_code == 200, resubmitted.text
-    assert resubmitted.json()["status"] == "new"
+    assert resubmitted.json()["status"] == "in_progress"
 
 
 async def test_file_upload_and_download(

@@ -36,10 +36,12 @@ maydonlar: [6-bo'lim, «Murojaat yaratish»](#murojaat-yaratish).
 |---|---|
 | `201` | Murojaat yaratildi. |
 | `200` | Shu kalit bilan murojaat avval yaratilgan — o'sha qaytarildi. Tarmoq xatosidan keyin qayta yuborish xavfsiz. |
-| `409` | Talabaning fakultetiga registrator biriktirilmagan yoki profilda fakultet yo'q. Talabaga matnni ko'rsating. |
+| `409` | Talabaning fakultetiga hech bir xodim (na xodim, na registrator) biriktirilmagan yoki profilda fakultet yo'q. Talabaga matnni ko'rsating. |
 | `400` | Xizmat topilmadi, faol emas yoki xizmat turiga mos emas. |
 
-Mas'ul xodim talabaning fakultetidan avtomatik tanlanadi. Ijro muddati
+Murojaat talabaning fakulteti (va bo'limi) ga biriktirilgan xodimga avtomatik
+yo'naltiriladi va darhol `in_progress` holatida qaytadi. Fakultetda xodim
+bo'lmasa, fakultet registratoriga tushadi. Ijro muddati
 (`sla_deadline`) faqat ish kunlari (dushanba–juma, bayramlarsiz) bo'yicha
 hisoblanadi.
 
@@ -48,22 +50,40 @@ hisoblanadi.
 | So'rov | Vazifasi |
 |---|---|
 | `GET /integration/requests` | Integratsiya yaratgan murojaatlar (`limit`, `offset`, `status`, `student_hemis_id`) |
-| `GET /integration/requests/{id}` | Tafsilot: holat, tarix, xabarlar, fayllar |
+| `GET /integration/requests/{id}` | Tafsilot: holat, tarix, xabarlar, fayllar, yakuniy javob (`answer`) |
 | `POST /integration/requests/{id}/messages` | Talaba xabari: `{"content": "..."}` |
 | `POST /integration/requests/{id}/files` | Fayl (`multipart/form-data`, maydon nomi `upload`) |
 | `GET /integration/requests/{id}/files/{file_id}` | Faylni yuklab olish (masalan, tayyor hujjat) |
 | `POST /integration/requests/{id}/resubmit` | Qaytarilgan murojaatni to'ldirib qayta yuborish: `{"comment": "..."}` |
 
-Holatlar:
+Holatlar — jarayon **Yangi → Jarayonda → Javob berildi**:
 
 | Kod | Nomi | Izoh |
 |---|---|---|
-| `new` | Yangi | |
-| `accepted` | Qabul qilindi | |
-| `in_progress` | Jarayonda | |
-| `returned` | Qaytarildi | Talabadan qo'shimcha ma'lumot kutilmoqda. Sabab `comment` da. SLA to'xtatiladi. Talaba `resubmit` qiladi. |
-| `completed` | Bajarildi | Yopiq |
-| `rejected` | Rad etildi | Yopiq. Sabab `comment` da. |
+| `new` | Yangi | Yuborilgan payt. Yo'naltirilgach darhol `in_progress` ga o'tadi. |
+| `in_progress` | Jarayonda | Mas'ul xodim ko'rib chiqmoqda. |
+| `returned` | Qaytarildi | Talabadan qo'shimcha ma'lumot kutilmoqda. Sabab `comment` da. SLA to'xtatiladi. Talaba `resubmit` qiladi, murojaat yana `in_progress` ga qaytadi. |
+| `completed` | Javob berildi | Yopiq. Xodimning yakuniy javobi `answer` da. |
+| `accepted`, `rejected` | Qabul qilindi, Rad etildi | Eski tartibdan qolgan yozuvlarda uchraydi; yangi murojaatlar bu holatlarga o'tmaydi. |
+
+Murojaat faqat xodimning **yakuniy javobi** bilan yopiladi. Javob tafsilotda
+`answer` maydonida keladi (javob berilmaguncha `null`):
+
+```json
+"answer": {
+  "text": "Ma'lumotnoma tayyor, ilovada.",
+  "answered_at": "2026-09-29T10:20:00+00:00",
+  "answered_by": 4,
+  "answered_by_name": "Aziz Toshev",
+  "files": [
+    {"id": 7, "file_name": "malumotnoma.pdf", "file_size": 48213,
+     "mime_type": "application/pdf", "is_answer": true, "...": "..."}
+  ]
+}
+```
+
+Javob fayllari `files` ro'yxatida ham `is_answer: true` bilan turadi va odatdagi
+`GET /integration/requests/{id}/files/{file_id}` orqali yuklab olinadi.
 
 Yopiq murojaatga xabar yoki fayl qo'shilsa `409` qaytadi.
 
@@ -97,7 +117,7 @@ X-ROYD-Signature: sha256=<hex>
     "status": "returned",
     "status_label": "Qaytarildi",
     "sla_deadline": "2026-10-01T12:00:00+00:00",
-    "old_status": "accepted",
+    "old_status": "in_progress",
     "comment": "Pasport nusxasini yuklang"
   }
 }
@@ -106,9 +126,9 @@ X-ROYD-Signature: sha256=<hex>
 | Hodisa | Qo'shimcha maydonlar (`data` ichida) |
 |---|---|
 | `request.created` | — |
-| `request.status_changed` | `old_status`, `comment` |
+| `request.status_changed` | `old_status`, `comment`; `completed` ga o'tganda `answer`: `text`, `answered_at`, `answered_by_name`, `files` |
 | `request.message_created` | `message`: `id`, `content`, `sender_name`, `sender_role`, `from_student` |
-| `request.file_added` | `file`: `id`, `file_name`, `file_size`, `mime_type`, `from_student` |
+| `request.file_added` | `file`: `id`, `file_name`, `file_size`, `mime_type`, `from_student`, `is_answer` |
 
 Ichki (xodimlar uchun) eslatmalar hech qachon yuborilmaydi.
 
@@ -256,13 +276,14 @@ Content-Type: application/json
   yuborilmasa, avvalgi rasm saqlanib qoladi.
 - Fakultet nomi bo'yicha qidiriladi, guruh esa shu fakultet ichida nomi
   bo'yicha qidiriladi. Topilmasa, yangisi yaratiladi. Murojaat shu fakultetga
-  biriktirilgan registratorga tushadi. Registrator biriktirilmagan bo'lsa
+  biriktirilgan xodimga (bo'limi mos kelgani afzal), u bo'lmasa fakultet
+  registratoriga tushadi. Hech kim biriktirilmagan bo'lsa
   (masalan, fakultet nomida xato bo'lsa), `409` qaytadi va hech narsa
   saqlanmaydi. Shuning uchun fakultet nomlari ROYD'dagi nomlar bilan bir xil
   bo'lishi kerak.
 - Javobdagi `student_id` ROYD'ning ichki raqami, u `student_hemis_id` emas.
 - Javob kodlari §2 dagidek: `201`, `200` (shu `Idempotency-Key` bilan avval
-  yaratilgan) va `400`. `409` esa registrator topilmaganda yoki
+  yaratilgan) va `400`. `409` esa mas'ul xodim topilmaganda yoki
   `Idempotency-Key` bu talabaning boshqa integratsiya yaratgan murojaatida
   ishlatilgan bo'lsa qaytadi. Majburiy maydon yetishmasa, `422` qaytadi.
 

@@ -1,8 +1,15 @@
-"""Automatic routing of a new request to a registrator.
+"""Automatic routing of a new request to the employee who will handle it.
 
-Students no longer pick who handles their request. Registrators are bound to a
-faculty in the admin panel (Registrator ofis → Xodimlar → Fakultetga
-biriktirish), so the student's own faculty decides who receives it.
+Students do not pick who handles their request. Employees are bound to a
+faculty, and optionally a department, in the admin panel (Registrator ofis →
+Xodimlar), and that binding decides who receives a student's request:
+
+1. a staff member bound to the student's faculty — one from the student's own
+   department when there is one, otherwise any from the faculty;
+2. failing that, a registrator bound to the faculty, as before.
+
+The request goes straight to that person and is worked from there; there is no
+triage step in between.
 """
 
 import logging
@@ -18,12 +25,12 @@ from app.models.request import RequestStatus
 log = logging.getLogger(__name__)
 
 
-class NoRegistratorForFaculty(HTTPException):
-    """No registrator is bound to the student's faculty.
+class NoHandlerForFaculty(HTTPException):
+    """Nobody is bound to the student's faculty.
 
     Raised as a 409 rather than a 500: the request is well-formed, the system
     is simply not configured to receive it yet. Routing to some arbitrary
-    registrator would put the request in front of the wrong office, so it fails
+    employee would put the request in front of the wrong office, so it fails
     loudly instead.
     """
 
@@ -54,7 +61,7 @@ class StudentHasNoFaculty(HTTPException):
 async def _open_load(db: AsyncSession, user_ids: list[int]) -> dict[int, int]:
     """Count each candidate's still-open requests.
 
-    Closed requests are excluded so that a registrator who has handled a lot of
+    Closed requests are excluded so that someone who has handled a lot of
     traffic historically is not starved of new work.
     """
     if not user_ids:
@@ -72,44 +79,62 @@ async def _open_load(db: AsyncSession, user_ids: list[int]) -> dict[int, int]:
     return {assignee_id: count for assignee_id, count in rows}
 
 
-async def find_registrator_for_faculty(db: AsyncSession, faculty_id: int) -> User | None:
-    """Pick the registrator who should receive a request from this faculty.
-
-    With a single bound registrator this returns that person. With several, the
-    one carrying the fewest open requests wins, which spreads the faculty's
-    queue instead of always landing on the lowest id. Ties break on id so the
-    choice is deterministic and testable.
-    """
-    candidates = (
-        (
-            await db.execute(
-                select(User)
-                .join(Role)
-                # The faculty binding lives on the employee profile now.
-                .join(Employee, Employee.user_id == User.id)
-                .where(
-                    Role.name == Role.REGISTRATOR,
-                    User.is_active.is_(True),
-                    Employee.faculty_id == faculty_id,
-                )
-                .options(selectinload(User.role))
-                .order_by(User.id.asc())
-            )
-        )
-        .scalars()
-        .all()
-    )
+async def _least_loaded(db: AsyncSession, candidates: list[User]) -> User | None:
+    """The candidate carrying the fewest open requests; ties break on id so the
+    choice is deterministic and testable."""
     if not candidates:
         return None
     if len(candidates) == 1:
         return candidates[0]
-
     load = await _open_load(db, [c.id for c in candidates])
     return min(candidates, key=lambda c: (load.get(c.id, 0), c.id))
 
 
-async def resolve_assignee_for_student(db: AsyncSession, student: User) -> User:
-    """Resolve the registrator a student's new request belongs to.
+async def _bound_employees(
+    db: AsyncSession, role: str, faculty_id: int
+) -> list[tuple[User, int | None]]:
+    """Active users of `role` bound to the faculty, with their department."""
+    rows = (
+        await db.execute(
+            select(User, Employee.department_id)
+            .join(Role)
+            .join(Employee, Employee.user_id == User.id)
+            .where(
+                Role.name == role,
+                User.is_active.is_(True),
+                Employee.faculty_id == faculty_id,
+            )
+            .options(selectinload(User.role))
+            .order_by(User.id.asc())
+        )
+    ).all()
+    return [(user, department_id) for user, department_id in rows]
+
+
+async def find_staff_for(
+    db: AsyncSession, faculty_id: int, department_id: int | None
+) -> User | None:
+    """Pick the staff member who should handle a request from this faculty.
+
+    A staff member bound to the student's own department is preferred; when the
+    department has nobody, anyone bound to the faculty will do.
+    """
+    staff = await _bound_employees(db, Role.STAFF, faculty_id)
+    if department_id is not None:
+        same_department = [user for user, dept in staff if dept == department_id]
+        if same_department:
+            return await _least_loaded(db, same_department)
+    return await _least_loaded(db, [user for user, _ in staff])
+
+
+async def find_registrator_for_faculty(db: AsyncSession, faculty_id: int) -> User | None:
+    """Pick the registrator who should receive a request from this faculty."""
+    registrators = await _bound_employees(db, Role.REGISTRATOR, faculty_id)
+    return await _least_loaded(db, [user for user, _ in registrators])
+
+
+async def resolve_handler_for_student(db: AsyncSession, student: User) -> User:
+    """Resolve the employee a student's new request goes to.
 
     Raises rather than returning None: an unroutable request must not be
     silently created with no owner, because nobody's dashboard would show it.
@@ -117,19 +142,22 @@ async def resolve_assignee_for_student(db: AsyncSession, student: User) -> User:
     if student.faculty_id is None:
         raise StudentHasNoFaculty()
 
-    registrator = await find_registrator_for_faculty(db, student.faculty_id)
-    if registrator is None:
+    handler = await find_staff_for(db, student.faculty_id, student.department_id)
+    if handler is None:
+        handler = await find_registrator_for_faculty(db, student.faculty_id)
+    if handler is None:
         # `student.faculty` is a lazy relationship and the caller's User is not
         # loaded with it, so name the faculty with an explicit read.
         faculty_name = (
             await db.execute(select(Faculty.name).where(Faculty.id == student.faculty_id))
         ).scalar_one_or_none()
-        raise NoRegistratorForFaculty(faculty_name)
+        raise NoHandlerForFaculty(faculty_name)
 
     log.info(
-        "Routed new request from student %s (faculty %s) to registrator %s",
+        "Routed new request from student %s (faculty %s) to %s %s",
         student.id,
         student.faculty_id,
-        registrator.id,
+        handler.role_name,
+        handler.id,
     )
-    return registrator
+    return handler

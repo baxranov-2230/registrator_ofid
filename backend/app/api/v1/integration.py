@@ -212,8 +212,8 @@ async def create_request(
     """File a request for the student described in the body.
 
     The student is created or updated from `student_hemis_id`, `full_name`,
-    `image`, `faculty` and `group`, and the request is routed to the
-    registrator bound to that faculty.
+    `image`, `faculty` and `group`, and the request is routed straight to the
+    employee bound to that faculty, where it starts `in_progress`.
     """
     student = await sync_student_from_profile(db, data.student_profile())
     if not student.is_active:

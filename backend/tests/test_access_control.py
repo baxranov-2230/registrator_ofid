@@ -131,7 +131,15 @@ async def test_leadership_is_read_only(client, login, seeded):
 async def test_staff_cannot_touch_unassigned_request(client, login, seeded):
     student = await login(Role.STUDENT)
     staff = await login(Role.STAFF)
+    registrator = await login(Role.REGISTRATOR)
     req = await _new_request(client, student, seeded)
+    # Routing hands it to the only staff member; move it away from them.
+    moved = await client.post(
+        f"/api/v1/requests/{req['id']}/assign",
+        headers=registrator,
+        json={"assignee_id": seeded["user_ids"][Role.REGISTRATOR]},
+    )
+    assert moved.status_code == 200
 
     assert (await client.get(f"/api/v1/requests/{req['id']}", headers=staff)).status_code == 403
 

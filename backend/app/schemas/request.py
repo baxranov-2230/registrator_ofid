@@ -76,7 +76,19 @@ class RequestFileOut(BaseModel):
     file_name: str
     file_size: int
     mime_type: str
+    #: Sent with the final answer rather than during the conversation.
+    is_answer: bool = False
     created_at: datetime
+
+
+class RequestAnswerOut(BaseModel):
+    """The final answer: what the student reads as the outcome of the request."""
+
+    text: str
+    answered_at: datetime
+    answered_by: int | None = None
+    answered_by_name: str | None = None
+    files: list[RequestFileOut] = []
 
 
 class RequestHistoryOut(BaseModel):
@@ -146,6 +158,8 @@ class RequestDetail(RequestSummary):
     history: list[RequestHistoryOut] = []
     files: list[RequestFileOut] = []
     messages: list[MessageOut] = []
+    #: Set once the request has been answered, which is also what closed it.
+    answer: RequestAnswerOut | None = None
 
     @classmethod
     def for_viewer(cls, req, *, include_internal: bool) -> "RequestDetail":
@@ -163,6 +177,14 @@ class RequestDetail(RequestSummary):
         parent = getattr(req.category, "parent", None) if req.category else None
         if parent is not None:
             detail.service_type = CategoryOut.model_validate(parent)
+        if req.answered_at is not None:
+            detail.answer = RequestAnswerOut(
+                text=req.answer_text or "",
+                answered_at=req.answered_at,
+                answered_by=req.answered_by,
+                answered_by_name=req.answerer.full_name if req.answerer else None,
+                files=[f for f in detail.files if f.is_answer],
+            )
         return detail
 
     def _fill_actor_names(self, req) -> None:
