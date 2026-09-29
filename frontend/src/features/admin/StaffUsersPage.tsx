@@ -37,6 +37,7 @@ import WarningIcon from "@mui/icons-material/WarningAmberOutlined";
 import type { AuthUser } from "@/features/auth/authSlice";
 import {
   useDeleteUserMutation,
+  useListCategoriesQuery,
   useListFacultiesQuery,
   useListUsersQuery,
 } from "@/features/admin/adminApi";
@@ -78,6 +79,7 @@ export default function StaffUsersPage() {
   const admins = useMemo(() => r3.data?.items ?? [], [r3.data]);
   const leadership = useMemo(() => r4.data?.items ?? [], [r4.data]);
   const { data: faculties = [] } = useListFacultiesQuery({ include_inactive: true });
+  const { data: catalog = [] } = useListCategoriesQuery();
   const [deleteUser] = useDeleteUserMutation();
 
   const isLoading = r1.isLoading || r2.isLoading || r3.isLoading || r4.isLoading;
@@ -113,6 +115,18 @@ export default function StaffUsersPage() {
     return faculties.filter((f) => f.is_active && !bound.has(f.id));
   }, [registrators, faculties]);
 
+  /**
+   * Service types routed to general issues are refused (409) while nobody is
+   * flagged to receive them, so that gap is surfaced the same way.
+   */
+  const unhandledGeneralServices = useMemo(() => {
+    const covered = [...registrators, ...staff].some((u) => u.is_active && u.is_general_manager);
+    if (covered) return [];
+    return catalog
+      .flatMap((type) => type.children)
+      .filter((s) => s.is_active && s.routing === "general_manager");
+  }, [registrators, staff, catalog]);
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return users.filter((u) => {
@@ -147,6 +161,14 @@ export default function StaffUsersPage() {
         <Alert severity="warning" icon={<WarningIcon />} sx={{ mb: 3 }}>
           {t("users.unboundFaculties", {
             names: unboundFaculties.map((f) => f.name).join(", "),
+          })}
+        </Alert>
+      )}
+
+      {!isLoading && unhandledGeneralServices.length > 0 && (
+        <Alert severity="warning" icon={<WarningIcon />} sx={{ mb: 3 }}>
+          {t("users.noGeneralManager", {
+            names: unhandledGeneralServices.map((s) => s.name).join(", "),
           })}
         </Alert>
       )}
@@ -280,20 +302,32 @@ export default function StaffUsersPage() {
                     />
                   </TableCell>
                   <TableCell>
-                    {u.faculty_id ? (
-                      <Typography variant="body2" noWrap>
-                        {facultyName.get(u.faculty_id) ?? `#${u.faculty_id}`}
-                      </Typography>
-                    ) : (
-                      // A registrator without a faculty receives nothing, so
-                      // the gap is called out rather than shown as a dash.
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        color={u.role.name === "registrator" ? "warning" : "default"}
-                        label={t("users.noFaculty")}
-                      />
-                    )}
+                    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                      {u.faculty_id ? (
+                        <Typography variant="body2" noWrap>
+                          {facultyName.get(u.faculty_id) ?? `#${u.faculty_id}`}
+                        </Typography>
+                      ) : (
+                        // A registrator without a faculty receives nothing, so
+                        // the gap is called out rather than shown as a dash —
+                        // unless they take general issues instead.
+                        !u.is_general_manager && (
+                          <Chip
+                            size="small"
+                            variant="outlined"
+                            color={u.role.name === "registrator" ? "warning" : "default"}
+                            label={t("users.noFaculty")}
+                          />
+                        )
+                      )}
+                      {u.is_general_manager && (
+                        <Chip
+                          size="small"
+                          label={t("users.generalManagerBadge")}
+                          sx={{ bgcolor: "#EA580C15", color: "#EA580C", fontWeight: 600 }}
+                        />
+                      )}
+                    </Stack>
                   </TableCell>
                   <TableCell>
                     <Typography variant="body2" noWrap>

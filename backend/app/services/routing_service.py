@@ -1,12 +1,21 @@
 """Automatic routing of a new request to the employee who will handle it.
 
-Students do not pick who handles their request. Employees are bound to a
-faculty, and optionally a department, in the admin panel (Registrator ofis →
-Xodimlar), and that binding decides who receives a student's request:
+Students do not pick who handles their request. The service type they file
+under decides the route (`ServiceRouting`, set in Murojaat turlari):
 
-1. a staff member bound to the student's faculty — one from the student's own
-   department when there is one, otherwise any from the faculty;
-2. failing that, a registrator bound to the faculty, as before.
+* `faculty_manager` — employees are bound to a faculty, and optionally a
+  department, in the admin panel (Registrator ofis → Xodimlar), and that
+  binding decides who receives the request:
+
+  1. a staff member bound to the student's faculty — one from the student's
+     own department when there is one, otherwise any from the faculty;
+  2. failing that, a registrator bound to the faculty.
+
+* `general_manager` — a staff member or registrator flagged as the manager
+  for general issues, whatever the student's faculty.
+
+* `auto_reply` — nobody; the system answers on the spot (see
+  `request_service.create_request`).
 
 The request goes straight to that person and is worked from there; there is no
 triage step in between.
@@ -20,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import Employee, Faculty, Request, Role, User
+from app.models.category import ServiceRouting
 from app.models.request import RequestStatus
 
 log = logging.getLogger(__name__)
@@ -40,6 +50,19 @@ class NoHandlerForFaculty(HTTPException):
             status_code=409,
             detail=(
                 f"{where} Registrator ofis xodimi biriktirilmagan. "
+                "Iltimos, administratorga murojaat qiling."
+            ),
+        )
+
+
+class NoGeneralManager(HTTPException):
+    """The service goes to the general-issues manager, and nobody is one."""
+
+    def __init__(self) -> None:
+        super().__init__(
+            status_code=409,
+            detail=(
+                "Umumiy masalalar bo'yicha menejer biriktirilmagan. "
                 "Iltimos, administratorga murojaat qiling."
             ),
         )
@@ -131,6 +154,48 @@ async def find_registrator_for_faculty(db: AsyncSession, faculty_id: int) -> Use
     """Pick the registrator who should receive a request from this faculty."""
     registrators = await _bound_employees(db, Role.REGISTRATOR, faculty_id)
     return await _least_loaded(db, [user for user, _ in registrators])
+
+
+async def find_general_manager(db: AsyncSession) -> User | None:
+    """Pick the general-issues manager with the lightest open load."""
+    managers = (
+        (
+            await db.execute(
+                select(User)
+                .join(Role)
+                .join(Employee, Employee.user_id == User.id)
+                .where(
+                    Role.name.in_((Role.STAFF, Role.REGISTRATOR)),
+                    User.is_active.is_(True),
+                    Employee.is_general_manager.is_(True),
+                )
+                .options(selectinload(User.role))
+                .order_by(User.id.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return await _least_loaded(db, list(managers))
+
+
+async def resolve_handler(db: AsyncSession, student: User, routing: str) -> User:
+    """The employee a request filed under a service with `routing` goes to.
+
+    Not for `auto_reply` services: those have no handler at all.
+    """
+    if routing == ServiceRouting.GENERAL_MANAGER:
+        handler = await find_general_manager(db)
+        if handler is None:
+            raise NoGeneralManager()
+        log.info(
+            "Routed new request from student %s to general manager %s %s",
+            student.id,
+            handler.role_name,
+            handler.id,
+        )
+        return handler
+    return await resolve_handler_for_student(db, student)
 
 
 async def resolve_handler_for_student(db: AsyncSession, student: User) -> User:

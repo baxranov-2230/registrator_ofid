@@ -151,7 +151,7 @@ class RequestDetail(RequestSummary):
     description: str
     category: CategoryOut
     #: The parent service type of `category`, so the request can be shown as
-    #: "Xizmat turi → Xizmat" without the client re-walking the tree.
+    #: "Murojaat turi → Xizmat turi" without the client re-walking the tree.
     service_type: CategoryOut | None = None
     student: UserMini
     assignee: UserMini | None = None

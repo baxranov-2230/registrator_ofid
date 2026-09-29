@@ -32,6 +32,8 @@ class UserOut(BaseModel):
     role: RoleOut
     faculty_id: int | None = None
     department_id: int | None = None
+    #: Receives requests for services routed to general issues.
+    is_general_manager: bool = False
     external_student_id: str | None = None
     is_active: bool
     last_login_at: datetime | None = None
@@ -70,6 +72,8 @@ class UserCreate(BaseModel):
     role_name: str
     faculty_id: int | None = None
     department_id: int | None = None
+    #: "Umumiy masalalar bo'yicha menejer". Staff and registrators only.
+    is_general_manager: bool = False
 
     _password = field_validator("password")(check_password_strength)
 
@@ -85,6 +89,7 @@ class UserUpdate(BaseModel):
     role_name: str | None = None
     faculty_id: int | None = None
     department_id: int | None = None
+    is_general_manager: bool | None = None
     is_active: bool | None = None
     password: str | None = Field(default=None, max_length=128)
     #: Turn off a user's second factor, e.g. after they lost their phone.

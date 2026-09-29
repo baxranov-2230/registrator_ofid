@@ -218,7 +218,7 @@
     "descriptionLabel": "Murojaat matni",
     "notYourRequest": "Bu murojaat sizga biriktirilmagan — holatini faqat mas'ul xodim o'zgartira oladi.",
     "detailsTitle": "Ma'lumotlar",
-    "serviceLabel": "Xizmat",
+    "serviceLabel": "Xizmat turi",
     "studentLabel": "Talaba",
     "reassign": "O'zgartirish",
     "deadlineLabel": "Javob muddati (SLA)",
@@ -238,6 +238,7 @@
     "answerSubmit": "Javobni yuborish",
     "answerTextRequired": "Javob matnini yozing",
     "finalAnswerTitle": "Yakuniy javob",
+    "autoAnswer": "Avtomatik javob",
     "attachmentsLabel": "Ilova qilingan fayllar"
   },
   "common": {
@@ -295,7 +296,9 @@
       "role": "Rol",
       "faculty": "Fakultet",
       "active": "Faol",
-      "reset2fa": "Ikki bosqichli kirishni o'chirish (telefon yo'qolgan bo'lsa)"
+      "reset2fa": "Ikki bosqichli kirishni o'chirish (telefon yo'qolgan bo'lsa)",
+      "generalManager": "Umumiy masalalar bo'yicha menejer",
+      "generalManagerHint": "«Umumiy masalalar menejeriga» yo'naltirilgan xizmat turlari bo'yicha murojaatlar fakultetdan qat'i nazar shu xodimga tushadi."
     },
     "staffTitle": "Xodimlar",
     "staffSubtitle": "Registrator ofis xodimlari va ma'murlar",
@@ -308,7 +311,9 @@
     "totalStudents": "Jami talabalar",
     "activeStudents": "Faol talabalar",
     "noFaculty": "Biriktirilmagan",
-    "unboundFaculties": "Quyidagi fakultetlarga Registrator ofis xodimi biriktirilmagan: {{names}}. Bu fakultet talabalari murojaat yubora olmaydi."
+    "unboundFaculties": "Quyidagi fakultetlarga Registrator ofis xodimi biriktirilmagan: {{names}}. Bu fakultet talabalari murojaat yubora olmaydi.",
+    "generalManagerBadge": "Umumiy masalalar",
+    "noGeneralManager": "Umumiy masalalar bo'yicha menejer belgilanmagan, shuning uchun quyidagi xizmat turlariga murojaat yuborib bo'lmaydi: {{names}}. Xodimni tahrirlab «Umumiy masalalar bo'yicha menejer»ni yoqing."
   },
   "faculties": {
     "subtitle": "Fakultet va kafedralarni boshqarish",
@@ -346,18 +351,40 @@
     }
   },
   "categories": {
-    "subtitle": "Murojaat turlari va SLA muddatlari",
-    "newCategory": "Yangi tur",
-    "newSubcategory": "Yangi sub-tur",
-    "addChild": "Sub-tur qo'shish",
+    "subtitle": "Murojaat turlari va ular ichidagi xizmat turlari: ustuvorlik, SLA va yo'nalish",
+    "newCategory": "Yangi murojaat turi",
+    "editCategory": "Murojaat turini tahrirlash",
+    "newService": "Yangi xizmat turi",
+    "editService": "Xizmat turini tahrirlash",
+    "addService": "Xizmat turi qo'shish",
+    "parentLabel": "Murojaat turi: {{name}}",
+    "serviceCount": "{{count}} ta xizmat turi",
+    "noServices": "Bu murojaat turida hali xizmat turi yo'q",
     "empty": "Murojaat turlari mavjud emas",
     "form": {
       "name": "Nomi",
+      "description": "Tasnifi",
+      "descriptionHint": "Bu murojaat turi qanday masalalarni qamrab oladi",
+      "serviceName": "Xizmat nomi",
       "slaHours": "SLA (soat)",
-      "priority": "Ustuvorlik"
+      "priority": "Ustuvorlik",
+      "routing": "Xizmat turi yo'nalishi",
+      "autoReplyText": "Avtomatik javob matni",
+      "autoReplyHint": "Talaba murojaat yuborishi bilan shu matn yakuniy javob sifatida yuboriladi va murojaat yopiladi.",
+      "generalHint": "Umumiy masalalar bo'yicha menejer «Xodimlar» sahifasida xodimni tahrirlab belgilanadi."
     },
-    "editCategory": "Turni tahrirlash",
-    "deactivateConfirm": "'{{name}}' turini nofaol qilasizmi? Eski murojaatlar saqlanib qoladi.",
+    "routing": {
+      "auto_reply": "Avtomatik javob",
+      "faculty_manager": "Fakultet menejeriga",
+      "general_manager": "Umumiy masalalar menejeriga"
+    },
+    "routingHint": {
+      "auto_reply": "Murojaat kelganda tizim avtomatik javob beradi. Menejerga yuborilmaydi.",
+      "faculty_manager": "Talabaning fakultetiga biriktirilgan menejerga avtomatik biriktiriladi.",
+      "general_manager": "Umumiy masalalar bo'yicha menejerga avtomatik biriktiriladi."
+    },
+    "deactivateConfirm": "'{{name}}' xizmat turini nofaol qilasizmi? Eski murojaatlar saqlanib qoladi.",
+    "deactivateTypeConfirm": "'{{name}}' murojaat turini nofaol qilasizmi? Uning xizmat turlariga ham murojaat yuborib bo'lmaydi. Eski murojaatlar saqlanib qoladi.",
     "inactive": "Nofaol"
   },
   "audit": {
@@ -459,7 +486,7 @@
       "staff": "Mas'ul xodim",
       "faculty": "Fakultet",
       "department": "Bo'lim",
-      "service_type": "Xizmat turi"
+      "service_type": "Murojaat turi"
     },
     "cols": {
       "total": "Jami",

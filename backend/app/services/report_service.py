@@ -41,7 +41,7 @@ GROUP_TITLES = {
     "staff": "Mas'ul xodim",
     "faculty": "Fakultet",
     "department": "Kafedra / bo'lim",
-    "service_type": "Xizmat turi",
+    "service_type": "Murojaat turi",
 }
 
 _UNSET_LABEL = {

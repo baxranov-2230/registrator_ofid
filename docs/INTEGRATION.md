@@ -22,11 +22,23 @@ murojaat bilan birga yuboriladi.
 
 ## 2. Murojaat yuborish
 
-Xizmatlar katalogi (ikki bosqichli: xizmat turi → xizmat):
+Xizmatlar katalogi (ikki bosqichli: murojaat turi → xizmat turi):
 
 ```http
 GET /api/v1/integration/categories
 ```
+
+Ildiz elementlar — **murojaat turlari** (`name`, `description` — tasnifi), ular
+ichidagi `children` — **xizmat turlari**. Murojaat xizmat turi bo'yicha
+yuboriladi. Xizmat turidagi `routing` murojaat qayerga tushishini bildiradi:
+
+| `routing` | Ma'nosi |
+|---|---|
+| `auto_reply` | Tizim darhol `auto_reply_text` bilan javob beradi. Murojaat `completed` holatida qaytadi, `answer` to'ldirilgan. |
+| `faculty_manager` | Talabaning fakultetiga biriktirilgan xodimga tushadi (quyida). |
+| `general_manager` | Fakultetdan qat'i nazar, umumiy masalalar bo'yicha menejerga tushadi. |
+
+SLA (`sla_hours`) va ustuvorlik (`priority`) ham xizmat turidan olinadi.
 
 Murojaat yaratish — **har doim `Idempotency-Key` bilan** (1–64 belgi, har bir
 yangi murojaat uchun yangi): `POST /api/v1/integration/requests`. Body va
@@ -36,12 +48,16 @@ maydonlar: [6-bo'lim, «Murojaat yaratish»](#murojaat-yaratish).
 |---|---|
 | `201` | Murojaat yaratildi. |
 | `200` | Shu kalit bilan murojaat avval yaratilgan — o'sha qaytarildi. Tarmoq xatosidan keyin qayta yuborish xavfsiz. |
-| `409` | Talabaning fakultetiga hech bir xodim (na xodim, na registrator) biriktirilmagan yoki profilda fakultet yo'q. Talabaga matnni ko'rsating. |
-| `400` | Xizmat topilmadi, faol emas yoki xizmat turiga mos emas. |
+| `409` | Mas'ul topilmadi: talabaning fakultetiga hech bir xodim (na xodim, na registrator) biriktirilmagan, profilda fakultet yo'q yoki umumiy masalalar bo'yicha menejer yo'q. Talabaga matnni ko'rsating. |
+| `400` | Xizmat turi topilmadi, faol emas yoki murojaat turiga mos emas. |
 
-Murojaat talabaning fakulteti (va bo'limi) ga biriktirilgan xodimga avtomatik
-yo'naltiriladi va darhol `in_progress` holatida qaytadi. Fakultetda xodim
-bo'lmasa, fakultet registratoriga tushadi. Ijro muddati
+`faculty_manager` xizmat turlarida murojaat talabaning fakulteti (va bo'limi)
+ga biriktirilgan xodimga avtomatik yo'naltiriladi va darhol `in_progress`
+holatida qaytadi. Fakultetda xodim bo'lmasa, fakultet registratoriga tushadi.
+`general_manager` da umumiy masalalar bo'yicha menejerga tushadi, u ham
+`in_progress` bo'ladi. `auto_reply` da murojaat darhol `completed` bo'ladi:
+`request.created` dan keyin `request.status_changed` webhook'i `answer` bilan
+keladi (`answered_by_name` — `null`). Ijro muddati
 (`sla_deadline`) faqat ish kunlari (dushanba–juma, bayramlarsiz) bo'yicha
 hisoblanadi.
 
@@ -266,8 +282,8 @@ Content-Type: application/json
 | `faculty` | ha | Fakultet nomi |
 | `group` | ha | Guruh nomi |
 | `course` | ha | Kurs, butun son 1–7 (HEMIS kodi emas: 1-kurs uchun `1`, `11` emas) |
-| `category_id` | ha | Xizmat (katalogdagi barg), `GET /integration/categories` dan |
-| `service_type_id` | yo'q | Xizmat turi. Berilsa, xizmatga mos bo'lishi shart |
+| `category_id` | ha | Xizmat turi (katalogdagi barg), `GET /integration/categories` dan |
+| `service_type_id` | yo'q | Murojaat turi (ildiz). Berilsa, xizmat turiga mos bo'lishi shart |
 | `title` | ha | 3–500 belgi |
 | `description` | ha | 3–10000 belgi |
 
@@ -275,9 +291,10 @@ Content-Type: application/json
   F.I.Sh., rasm, fakultet, guruh va kurs yuborilganlari bilan yangilanadi. `image`
   yuborilmasa, avvalgi rasm saqlanib qoladi.
 - Fakultet nomi bo'yicha qidiriladi, guruh esa shu fakultet ichida nomi
-  bo'yicha qidiriladi. Topilmasa, yangisi yaratiladi. Murojaat shu fakultetga
-  biriktirilgan xodimga (bo'limi mos kelgani afzal), u bo'lmasa fakultet
-  registratoriga tushadi. Hech kim biriktirilmagan bo'lsa
+  bo'yicha qidiriladi. Topilmasa, yangisi yaratiladi. `faculty_manager` xizmat
+  turlarida murojaat shu fakultetga biriktirilgan xodimga (bo'limi mos kelgani
+  afzal), u bo'lmasa fakultet registratoriga tushadi (boshqa yo'nalishlar:
+  [§2](#2-murojaat-yuborish)). Hech kim biriktirilmagan bo'lsa
   (masalan, fakultet nomida xato bo'lsa), `409` qaytadi va hech narsa
   saqlanmaydi. Shuning uchun fakultet nomlari ROYD'dagi nomlar bilan bir xil
   bo'lishi kerak.

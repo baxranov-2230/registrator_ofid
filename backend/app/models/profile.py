@@ -15,7 +15,7 @@ columns, which is the separation the two directories actually need.
 from datetime import date, datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TimestampMixin
@@ -77,6 +77,12 @@ class Employee(Base, TimestampMixin):
     #: The faculty binding that routes incoming requests to a registrator.
     faculty_id: Mapped[int | None] = mapped_column(ForeignKey("faculties.id"), index=True)
     department_id: Mapped[int | None] = mapped_column(ForeignKey("departments.id"))
+
+    #: Receives requests for services routed to general issues ("Umumiy
+    #: masalalar bo'yicha menejer"), regardless of the student's faculty.
+    is_general_manager: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default=false(), nullable=False
+    )
 
     employee_no: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
     position: Mapped[str | None] = mapped_column(String(255))

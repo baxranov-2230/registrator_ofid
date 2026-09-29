@@ -1291,6 +1291,7 @@
           "admin-catalogs"
         ],
         "summary": "Create Category",
+        "description": "A request type, or — with `parent_id` — a service type under one.",
         "operationId": "create_category_api_v1_admin_categories_post",
         "requestBody": {
           "content": {
@@ -1884,13 +1885,71 @@
         }
       }
     },
+    "/api/v1/requests/{request_id}/answer": {
+      "post": {
+        "tags": [
+          "requests"
+        ],
+        "summary": "Answer",
+        "description": "\"Javob berish\": send the final answer, with optional files, and close.\n\nThis is the only way a request is completed. Accepting, returning or\nrejecting are not outcomes; the student is always left with an answer.",
+        "operationId": "answer_api_v1_requests__request_id__answer_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_answer_api_v1_requests__request_id__answer_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequestDetail"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/requests/{request_id}/resubmit": {
       "post": {
         "tags": [
           "requests"
         ],
         "summary": "Resubmit",
-        "description": "Send a returned request back to the office after supplying what was asked.\n\nReturning used to be a dead end: only staff could move a request out of\n`returned`, so the student could add files and messages but never say\n\"done\". This moves it back to `new` and restarts the paused SLA clock.",
+        "description": "Send a returned request back to the office after supplying what was asked.\n\nReturning used to be a dead end: only staff could move a request out of\n`returned`, so the student could add files and messages but never say\n\"done\". This hands it back to its handler (`in_progress`) and restarts the\npaused SLA clock.",
         "operationId": "resubmit_api_v1_requests__request_id__resubmit_post",
         "security": [
           {
@@ -2867,7 +2926,7 @@
           "integration"
         ],
         "summary": "Create Request",
-        "description": "File a request for the student described in the body.\n\nThe student is created or updated from `student_hemis_id`, `full_name`,\n`image`, `faculty` and `group`, and the request is routed to the\nregistrator bound to that faculty.",
+        "description": "File a request for the student described in the body.\n\nThe student is created or updated from `student_hemis_id`, `full_name`,\n`image`, `faculty` and `group`, and the request is routed straight to the\nemployee bound to that faculty, where it starts `in_progress`.",
         "operationId": "create_request_api_v1_integration_requests_post",
         "security": [
           {
@@ -3752,6 +3811,30 @@
         ],
         "title": "AuditLogOut"
       },
+      "Body_answer_api_v1_requests__request_id__answer_post": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 10000,
+            "minLength": 1,
+            "title": "Text"
+          },
+          "files": {
+            "items": {
+              "type": "string",
+              "contentMediaType": "application/octet-stream"
+            },
+            "type": "array",
+            "title": "Files",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "Body_answer_api_v1_requests__request_id__answer_post"
+      },
       "Body_issue_token_api_v1_oauth_token_post": {
         "properties": {
           "grant_type": {
@@ -3853,11 +3936,24 @@
             "minLength": 2,
             "title": "Name"
           },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
           "sla_hours": {
             "type": "integer",
             "maximum": 720.0,
             "minimum": 1.0,
-            "title": "Sla Hours"
+            "title": "Sla Hours",
+            "default": 24
           },
           "priority": {
             "type": "string",
@@ -3869,6 +3965,28 @@
             ],
             "title": "Priority",
             "default": "normal"
+          },
+          "routing": {
+            "type": "string",
+            "enum": [
+              "auto_reply",
+              "faculty_manager",
+              "general_manager"
+            ],
+            "title": "Routing",
+            "default": "faculty_manager"
+          },
+          "auto_reply_text": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 10000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Reply Text"
           },
           "icon": {
             "anyOf": [
@@ -3884,10 +4002,10 @@
         },
         "type": "object",
         "required": [
-          "name",
-          "sla_hours"
+          "name"
         ],
-        "title": "CategoryCreate"
+        "title": "CategoryCreate",
+        "description": "Without `parent_id`, a request type: only `name` and `description`\nmatter. With it, a service type under that request type."
       },
       "CategoryOut": {
         "properties": {
@@ -3910,6 +4028,17 @@
             "type": "string",
             "title": "Name"
           },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
           "sla_hours": {
             "type": "integer",
             "title": "Sla Hours"
@@ -3917,6 +4046,21 @@
           "priority": {
             "type": "string",
             "title": "Priority"
+          },
+          "routing": {
+            "type": "string",
+            "title": "Routing"
+          },
+          "auto_reply_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Reply Text"
           },
           "is_active": {
             "type": "boolean",
@@ -3940,9 +4084,11 @@
           "name",
           "sla_hours",
           "priority",
+          "routing",
           "is_active"
         ],
-        "title": "CategoryOut"
+        "title": "CategoryOut",
+        "description": "A catalogue node: a request type (root) or a service type (child).\n\n`sla_hours`, `priority`, `routing` and `auto_reply_text` describe how a\nrequest filed under a service type is handled; on a request type they are\nunused."
       },
       "CategoryTreeNode": {
         "properties": {
@@ -3965,6 +4111,17 @@
             "type": "string",
             "title": "Name"
           },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
           "sla_hours": {
             "type": "integer",
             "title": "Sla Hours"
@@ -3972,6 +4129,21 @@
           "priority": {
             "type": "string",
             "title": "Priority"
+          },
+          "routing": {
+            "type": "string",
+            "title": "Routing"
+          },
+          "auto_reply_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Reply Text"
           },
           "is_active": {
             "type": "boolean",
@@ -4003,6 +4175,7 @@
           "name",
           "sla_hours",
           "priority",
+          "routing",
           "is_active"
         ],
         "title": "CategoryTreeNode"
@@ -4033,6 +4206,18 @@
             ],
             "title": "Name"
           },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
           "sla_hours": {
             "anyOf": [
               {
@@ -4062,6 +4247,34 @@
               }
             ],
             "title": "Priority"
+          },
+          "routing": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "auto_reply",
+                  "faculty_manager",
+                  "general_manager"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Routing"
+          },
+          "auto_reply_text": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 10000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Reply Text"
           },
           "icon": {
             "anyOf": [
@@ -5083,6 +5296,56 @@
         "type": "object",
         "title": "RefreshRequest"
       },
+      "RequestAnswerOut": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "answered_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Answered At"
+          },
+          "answered_by": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered By"
+          },
+          "answered_by_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Answered By Name"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/RequestFileOut"
+            },
+            "type": "array",
+            "title": "Files",
+            "default": []
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "answered_at"
+        ],
+        "title": "RequestAnswerOut",
+        "description": "The final answer: what the student reads as the outcome of the request."
+      },
       "RequestAssign": {
         "properties": {
           "assignee_id": {
@@ -5335,6 +5598,16 @@
             "title": "Messages",
             "default": []
           },
+          "answer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RequestAnswerOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "is_overdue": {
             "type": "boolean",
             "title": "Is Overdue",
@@ -5386,6 +5659,11 @@
           "mime_type": {
             "type": "string",
             "title": "Mime Type"
+          },
+          "is_answer": {
+            "type": "boolean",
+            "title": "Is Answer",
+            "default": false
           },
           "created_at": {
             "type": "string",
@@ -5985,6 +6263,11 @@
               }
             ],
             "title": "Department Id"
+          },
+          "is_general_manager": {
+            "type": "boolean",
+            "title": "Is General Manager",
+            "default": false
           }
         },
         "type": "object",
@@ -6081,6 +6364,11 @@
               }
             ],
             "title": "Department Id"
+          },
+          "is_general_manager": {
+            "type": "boolean",
+            "title": "Is General Manager",
+            "default": false
           },
           "external_student_id": {
             "anyOf": [
@@ -6343,6 +6631,17 @@
               }
             ],
             "title": "Department Id"
+          },
+          "is_general_manager": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Is General Manager"
           },
           "is_active": {
             "anyOf": [

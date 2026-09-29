@@ -49,10 +49,13 @@ export function UserDialog({
     password: "",
     role_name: user?.role.name || defaultRole,
     faculty_id: user?.faculty_id ? String(user.faculty_id) : "",
+    is_general_manager: user?.is_general_manager ?? false,
     is_active: user?.is_active ?? true,
     reset_2fa: false,
   });
   const [err, setErr] = useState<string | null>(null);
+  // Routing only hands requests to staff and registrators.
+  const canHandle = form.role_name === "staff" || form.role_name === "registrator";
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -71,6 +74,7 @@ export function UserDialog({
           password: form.password,
           role_name: form.role_name,
           faculty_id: form.faculty_id ? Number(form.faculty_id) : null,
+          is_general_manager: canHandle && form.is_general_manager,
         }).unwrap();
       } else if (user) {
         await updateUser({
@@ -82,6 +86,10 @@ export function UserDialog({
             phone: form.phone || null,
             role_name: form.role_name,
             faculty_id: form.faculty_id ? Number(form.faculty_id) : null,
+            // Cleared when the role no longer handles requests.
+            ...(canHandle || user.is_general_manager
+              ? { is_general_manager: canHandle && form.is_general_manager }
+              : {}),
             is_active: form.is_active,
             ...(form.password ? { password: form.password } : {}),
             ...(form.reset_2fa ? { reset_2fa: true } : {}),
@@ -167,6 +175,20 @@ export function UserDialog({
                 </MenuItem>
               ))}
             </TextField>
+            {canHandle && (
+              <Stack direction="row" alignItems="flex-start" spacing={1}>
+                <Switch
+                  checked={form.is_general_manager}
+                  onChange={(e) => setForm((f) => ({ ...f, is_general_manager: e.target.checked }))}
+                />
+                <Stack sx={{ pt: 0.75 }}>
+                  <Typography variant="body2">{t("users.form.generalManager")}</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {t("users.form.generalManagerHint")}
+                  </Typography>
+                </Stack>
+              </Stack>
+            )}
             {mode === "edit" && (
               <Stack direction="row" alignItems="center" spacing={1}>
                 <Switch

@@ -30,12 +30,28 @@ export interface StudentGroupOut {
   is_active: boolean;
 }
 
+/** Where a request filed under a service type goes. */
+export type ServiceRouting = "auto_reply" | "faculty_manager" | "general_manager";
+
+export const SERVICE_ROUTINGS: ServiceRouting[] = [
+  "auto_reply",
+  "faculty_manager",
+  "general_manager",
+];
+
+/**
+ * A root node is a request type (name + description); its children are
+ * service types, which carry the SLA, priority and routing.
+ */
 export interface CategoryNode {
   id: number;
   parent_id: number | null;
   name: string;
+  description: string | null;
   sla_hours: number;
   priority: Priority;
+  routing: ServiceRouting;
+  auto_reply_text: string | null;
   is_active: boolean;
   icon: string | null;
   children: CategoryNode[];
@@ -63,6 +79,7 @@ export interface UserCreatePayload {
   role_name: string;
   faculty_id?: number | null;
   department_id?: number | null;
+  is_general_manager?: boolean;
 }
 
 /**
@@ -77,6 +94,7 @@ export interface UserUpdatePayload {
   role_name?: string;
   faculty_id?: number | null;
   department_id?: number | null;
+  is_general_manager?: boolean;
   is_active?: boolean;
   /** Switch off the user's second factor, e.g. after a lost phone. */
   reset_2fa?: boolean;
@@ -106,18 +124,25 @@ export interface FacultyCreatePayload {
   contact_email?: string | null;
 }
 
+/** Without `parent_id` a request type; with it, a service type under one. */
 export interface CategoryCreatePayload {
   parent_id?: number | null;
   name: string;
-  sla_hours: number;
-  priority: Priority;
+  description?: string | null;
+  sla_hours?: number;
+  priority?: Priority;
+  routing?: ServiceRouting;
+  auto_reply_text?: string | null;
   icon?: string | null;
 }
 
 export interface CategoryUpdatePayload {
   name?: string;
+  description?: string | null;
   sla_hours?: number;
   priority?: Priority;
+  routing?: ServiceRouting;
+  auto_reply_text?: string | null;
   icon?: string | null;
   is_active?: boolean;
 }

@@ -20,7 +20,7 @@ from app.schemas.catalog import (
     StudentGroupUpdate,
 )
 from app.services.audit_service import log_action
-from app.services.catalog_service import category_tree
+from app.services.catalog_service import apply_category_update, build_category, category_tree
 
 router = APIRouter(tags=["catalogs"])
 
@@ -218,32 +218,34 @@ async def update_department(
     return DepartmentOut.model_validate(dept)
 
 
+def _category_audit(cat: RequestCategory) -> dict:
+    if cat.parent_id is None:
+        return {"name": cat.name, "description": cat.description, "is_active": cat.is_active}
+    return {
+        "name": cat.name,
+        "parent_id": cat.parent_id,
+        "sla_hours": cat.sla_hours,
+        "priority": cat.priority,
+        "routing": cat.routing,
+        "is_active": cat.is_active,
+    }
+
+
 @admin_router.post("/categories", response_model=CategoryOut, status_code=201)
 async def create_category(
     data: CategoryCreate,
     db: AsyncSession = Depends(get_db),
     actor: User = Depends(get_current_user),
 ) -> CategoryOut:
-    if data.parent_id and not await db.get(RequestCategory, data.parent_id):
-        raise HTTPException(status_code=404, detail="Ota kategoriya topilmadi")
-
-    cat = RequestCategory(
-        parent_id=data.parent_id,
-        name=data.name,
-        sla_hours=data.sla_hours,
-        priority=data.priority,
-        icon=data.icon,
-        is_active=True,
-    )
-    db.add(cat)
-    await db.flush()
+    """A request type, or — with `parent_id` — a service type under one."""
+    cat = await build_category(db, data)
     await log_action(
         db,
         user_id=actor.id,
         action="category.create",
         entity_type="category",
         entity_id=cat.id,
-        new_value={"name": cat.name, "sla_hours": cat.sla_hours, "priority": cat.priority},
+        new_value=_category_audit(cat),
     )
     await db.commit()
     await db.refresh(cat)
@@ -261,17 +263,8 @@ async def update_category(
     if not cat:
         raise HTTPException(status_code=404, detail="Kategoriya topilmadi")
 
-    payload = data.model_dump(exclude_unset=True)
-    if payload.get("parent_id") == category_id:
-        raise HTTPException(status_code=400, detail="Kategoriya o'ziga ota bo'la olmaydi")
-    if payload.get("parent_id") and not await db.get(RequestCategory, payload["parent_id"]):
-        raise HTTPException(status_code=404, detail="Ota kategoriya topilmadi")
-
-    old = {"name": cat.name, "sla_hours": cat.sla_hours, "priority": cat.priority}
-    for field, value in payload.items():
-        setattr(cat, field, value)
-
-    await db.flush()
+    old = _category_audit(cat)
+    await apply_category_update(db, cat, data.model_dump(exclude_unset=True))
     await log_action(
         db,
         user_id=actor.id,
@@ -279,7 +272,7 @@ async def update_category(
         entity_type="category",
         entity_id=cat.id,
         old_value=old,
-        new_value=payload,
+        new_value=_category_audit(cat),
     )
     await db.commit()
     await db.refresh(cat)

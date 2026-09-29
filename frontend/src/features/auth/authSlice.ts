@@ -16,6 +16,8 @@ export interface AuthUser {
   role: { id: number; name: string; description?: string | null };
   faculty_id: number | null;
   department_id: number | null;
+  /** Receives requests for services routed to general issues. */
+  is_general_manager: boolean;
   external_student_id: string | null;
   is_active: boolean;
   last_login_at: string | null;

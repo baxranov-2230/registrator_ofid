@@ -8,11 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.models import Message, Request, RequestCategory, RequestHistory, User
+from app.models.category import ServiceRouting
 from app.models.request import RequestStatus
 from app.models.role import Role
 from app.services.catalog_service import resolve_service
 from app.services.labels import status_label
-from app.services.routing_service import resolve_handler_for_student
+from app.services.routing_service import resolve_handler
 from app.services.sla_calendar import add_working_time, sla_deadline_from, working_time_between
 
 log = logging.getLogger(__name__)
@@ -117,15 +118,19 @@ async def create_request(
     api_client_id: int | None = None,
 ) -> Request:
     category = await resolve_service(db, service_type_id=service_type_id, service_id=category_id)
+    auto_reply = category.routing == ServiceRouting.AUTO_REPLY
 
-    # The student does not choose a handler. Routing is decided by their
-    # faculty and department, and refuses rather than guessing when nobody is
-    # bound to them.
-    assignee = await resolve_handler_for_student(db, student)
+    # The student does not choose a handler. The service type's routing
+    # decides: its faculty manager, the general-issues manager, or nobody when
+    # the system answers itself. Routing refuses rather than guessing when
+    # nobody fits.
+    assignee = None if auto_reply else await resolve_handler(db, student, category.routing)
 
     tracking_no = await generate_tracking_no(db, redis)
-    # Working days only, per Reglament 7.3.
-    sla_deadline = sla_deadline_from(datetime.now(UTC), category.sla_hours)
+    now = datetime.now(UTC)
+    # Working days only, per Reglament 7.3. SLA and priority come from the
+    # service type.
+    sla_deadline = sla_deadline_from(now, category.sla_hours)
 
     req = Request(
         tracking_no=tracking_no,
@@ -136,18 +141,24 @@ async def create_request(
         # Routed on submission, so the handler owns it from the first moment.
         status=RequestStatus.IN_PROGRESS,
         priority=category.priority,
-        assigned_to=assignee.id,
+        assigned_to=assignee.id if assignee else None,
         faculty_id=student.faculty_id,
         department_id=student.department_id,
         sla_deadline=sla_deadline,
         client_ref=client_ref,
         api_client_id=api_client_id,
     )
+    if auto_reply:
+        # Answered and closed on the spot; no manager ever sees it.
+        req.status = RequestStatus.COMPLETED
+        req.answer_text = category.auto_reply_text
+        req.answered_at = now
+        req.closed_at = now
     db.add(req)
     await db.flush()
 
-    # Two entries, so the timeline reads "filed" then "routed" — the same
-    # new → in_progress steps the status line shows.
+    # Two entries, so the timeline reads "filed" then "routed" (or
+    # "answered") — the same steps the status line shows.
     db.add(
         RequestHistory(
             request_id=req.id,
@@ -158,13 +169,22 @@ async def create_request(
         )
     )
     await db.flush()
+    if assignee is None:
+        comment = "Avtomatik javob berildi"
+    elif category.routing == ServiceRouting.GENERAL_MANAGER:
+        comment = (
+            "Umumiy masalalar bo'yicha menejerga avtomatik yo'naltirildi. "
+            f"Mas'ul xodim: {assignee.full_name}"
+        )
+    else:
+        comment = f"Avtomatik yo'naltirildi. Mas'ul xodim: {assignee.full_name}"
     db.add(
         RequestHistory(
             request_id=req.id,
             changed_by=None,
             old_status=RequestStatus.NEW,
-            new_status=RequestStatus.IN_PROGRESS,
-            comment=f"Avtomatik yo'naltirildi. Mas'ul xodim: {assignee.full_name}",
+            new_status=req.status,
+            comment=comment,
         )
     )
     await db.flush()

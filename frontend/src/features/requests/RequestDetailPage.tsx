@@ -190,7 +190,8 @@ export default function RequestDetailPage() {
                     </Typography>
                   </Stack>
                   <Typography variant="caption" color="text.secondary">
-                    {data.answer.answered_by_name && `${data.answer.answered_by_name} · `}
+                    {/* No author means the service type answered on its own. */}
+                    {`${data.answer.answered_by_name ?? t("requests.autoAnswer")} · `}
                     {formatDateTime(data.answer.answered_at)}
                   </Typography>
                 </Stack>

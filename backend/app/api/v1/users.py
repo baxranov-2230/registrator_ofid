@@ -36,6 +36,16 @@ async def _assert_admin_remains(db: AsyncSession) -> None:
         )
 
 
+def _assert_can_manage_general(role_name: str | None) -> None:
+    """Routing only ever picks staff and registrators, so the flag on anyone
+    else would look like coverage while receiving nothing."""
+    if role_name not in (Role.STAFF, Role.REGISTRATOR):
+        raise HTTPException(
+            status_code=400,
+            detail="Umumiy masalalar bo'yicha menejer faqat xodim yoki registrator bo'lishi mumkin",
+        )
+
+
 @router.get("/me", response_model=UserOut)
 async def get_me(user: User = Depends(get_current_user)) -> UserOut:
     return UserOut.model_validate(user)
@@ -136,6 +146,9 @@ async def create_user(
     if not role:
         raise HTTPException(status_code=400, detail=f"Noma'lum rol: {data.role_name}")
 
+    if data.is_general_manager:
+        _assert_can_manage_general(role.name)
+
     existing = (await db.execute(select(User).where(User.email == data.email))).scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=409, detail="Bu email allaqachon ro'yxatdan o'tgan")
@@ -161,6 +174,7 @@ async def create_user(
                 user_id=user.id,
                 faculty_id=data.faculty_id,
                 department_id=data.department_id,
+                is_general_manager=data.is_general_manager,
             )
         )
     await db.flush()
@@ -171,7 +185,11 @@ async def create_user(
         action="user.create",
         entity_type="user",
         entity_id=user.id,
-        new_value={"email": user.email, "role": role.name},
+        new_value={
+            "email": user.email,
+            "role": role.name,
+            "is_general_manager": user.is_general_manager,
+        },
     )
     await db.commit()
     return UserOut.model_validate(user)
@@ -233,6 +251,7 @@ async def update_user(
         "role": user.role.name if user.role else None,
         "is_active": user.is_active,
         "faculty_id": user.faculty_id,
+        "is_general_manager": user.is_general_manager,
         "totp_enabled": user.totp_enabled,
     }
 
@@ -249,7 +268,11 @@ async def update_user(
         user.phone = data.phone or None
     # Faculty/department are employee attributes now; ensure the profile row
     # exists before writing to it.
-    if "faculty_id" in sent or "department_id" in sent:
+    # Clearing a flag nobody set is a no-op, not a reason to create a profile.
+    general = data.is_general_manager is not None and (
+        data.is_general_manager or user.employee_profile is not None
+    )
+    if "faculty_id" in sent or "department_id" in sent or general:
         profile = user.employee_profile
         if profile is None:
             profile = Employee(user_id=user.id)
@@ -259,6 +282,8 @@ async def update_user(
             profile.faculty_id = data.faculty_id
         if "department_id" in sent:
             profile.department_id = data.department_id
+        if general:
+            profile.is_general_manager = data.is_general_manager
     if data.is_active is not None:
         user.is_active = data.is_active
     if data.password is not None:
@@ -273,6 +298,9 @@ async def update_user(
         if not role:
             raise HTTPException(status_code=400, detail=f"Noma'lum rol: {data.role_name}")
         user.role_id = role.id
+
+    if data.is_general_manager:
+        _assert_can_manage_general(data.role_name or user.role_name)
 
     # Losing the last admin means the system can only be recovered from the
     # database, so both self-demotion and self-deactivation are blocked (B-11).
@@ -291,6 +319,7 @@ async def update_user(
         "role": user.role.name if user.role else None,
         "is_active": user.is_active,
         "faculty_id": user.faculty_id,
+        "is_general_manager": user.is_general_manager,
         "totp_enabled": user.totp_enabled,
     }
     await log_action(

@@ -74,6 +74,11 @@ class User(Base, TimestampMixin):
         return profile.department_id if profile else None
 
     @property
+    def is_general_manager(self) -> bool:
+        profile = self.employee_profile
+        return bool(profile and profile.is_general_manager)
+
+    @property
     def external_student_id(self) -> str | None:
         return self.student_profile.external_student_id if self.student_profile else None
 

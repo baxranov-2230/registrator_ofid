@@ -22,8 +22,11 @@ export interface RequestCategoryOut {
   id: number;
   parent_id: number | null;
   name: string;
+  description: string | null;
   sla_hours: number;
   priority: string;
+  routing: string;
+  auto_reply_text: string | null;
   is_active: boolean;
   icon: string | null;
 }
@@ -108,7 +111,7 @@ export interface MessageOut {
 export interface RequestDetail extends RequestSummary {
   description: string;
   category: RequestCategoryOut;
-  /** Parent type of `category`, for showing "Xizmat turi → Xizmat". */
+  /** Parent type of `category`, for showing "Murojaat turi → Xizmat turi". */
   service_type: RequestCategoryOut | null;
   student: UserMini;
   assignee: UserMini | null;

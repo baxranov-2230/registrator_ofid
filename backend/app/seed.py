@@ -131,6 +131,15 @@ SEED_USERS = [
         role="registrator",
         faculty="EC",
     ),
+    # Receives requests for services routed to general issues, whatever the
+    # student's faculty — so no faculty binding.
+    dict(
+        full_name="Kamola Umumiy",
+        email="general@royd.uz",
+        password="reg123",
+        role="registrator",
+        general=True,
+    ),
     dict(
         full_name="Rahbar Alibekov",
         email="leadership@royd.uz",
@@ -237,7 +246,14 @@ async def seed() -> None:
             await db.flush()
             # Seeded accounts are all staff; the faculty binding lives on the
             # employee profile and is what routes requests to a registrator.
-            db.add(Employee(user_id=user.id, faculty_id=faculty_id, department_id=dept_id))
+            db.add(
+                Employee(
+                    user_id=user.id,
+                    faculty_id=faculty_id,
+                    department_id=dept_id,
+                    is_general_manager=u.get("general", False),
+                )
+            )
             log.info("user: %s (%s)", u["email"], u["role"])
 
         await db.commit()

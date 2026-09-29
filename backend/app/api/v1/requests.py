@@ -146,16 +146,41 @@ async def file_request(
             "title": req.title,
             "assigned_to": req.assigned_to,
             "auto_routed": True,
+            "auto_answered": req.status == RequestStatus.COMPLETED,
             **({"api_client": api_client.client_id} if api_client else {}),
         },
     )
 
-    # Routing always yields a handler — creation fails outright otherwise — so
-    # the assignee is notified unconditionally and the request lands on their
-    # dashboard straight away.
+    # Routing yields a handler — creation fails outright otherwise — unless
+    # the service answers itself, in which case the request is already closed.
     if req.assigned_to:
         await _notify_assigned(db, req, req.assigned_to)
     await events.publish(db, events.REQUEST_CREATED, req)
+    if req.status == RequestStatus.COMPLETED:
+        # The partner learns of every answer from `status_changed`, so an
+        # automatic one is announced the same way as a handler's.
+        await _notify_user(
+            db,
+            req.student_id,
+            type_=NotificationType.REQUEST_STATUS,
+            title=f"Murojaatingizga javob berildi: {req.tracking_no}",
+            lines=[f"'{req.title}' murojaatingiz bo'yicha javob:", req.answer_text or ""],
+            req=req,
+            link_base="/student/requests",
+        )
+        await events.publish(
+            db,
+            events.REQUEST_STATUS_CHANGED,
+            req,
+            old_status=RequestStatus.NEW,
+            comment=None,
+            answer={
+                "text": req.answer_text,
+                "answered_at": req.answered_at.isoformat() if req.answered_at else None,
+                "answered_by_name": None,
+                "files": [],
+            },
+        )
     return req
 
 

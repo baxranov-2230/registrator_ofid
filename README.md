@@ -38,6 +38,7 @@ the defaults are not the framework defaults:
 | Admin | `admin@royd.uz` | `admin123` |
 | Registrator (IT fakulteti) | `registrator@royd.uz` | `reg123` |
 | Registrator (Iqtisodiyot) | `registrator2@royd.uz` | `reg123` |
+| Registrator (umumiy masalalar) | `general@royd.uz` | `reg123` |
 | Leadership | `leadership@royd.uz` | `lead123` |
 | Staff | `staff1@royd.uz` | `staff123` |
 
@@ -47,9 +48,22 @@ university's student platform, which calls this API — see
 
 ## Murojaatlarni avtomatik yo'naltirish
 
-Talaba murojaat yuborganda xodimni tanlamaydi. Tizim talabaning fakultetini
-aniqlab, o'sha fakultetga biriktirilgan Registrator ofis xodimiga murojaatni
-avtomatik biriktiradi:
+Katalog ikki bosqichli: **murojaat turi** (nomi va tasnifi) ichida **xizmat
+turlari** bo'ladi. Talaba xizmat turini tanlaydi; SLA va ustuvorlik shu xizmat
+turidan olinadi. Qayerga yuborilishini ham xizmat turi hal qiladi (Admin →
+Murojaat turlari → xizmat turini tahrirlash → «Yo'nalishi»):
+
+- **Avtomatik javob** — tizim xizmat turida yozilgan javob matnini darhol
+  yuboradi, murojaat «Javob berildi» holatida yopiladi. Menejerga tushmaydi.
+- **Umumiy masalalar bo'yicha menejer** — murojaat fakultetdan qat'i nazar
+  «Umumiy masalalar bo'yicha menejer» belgisi qo'yilgan xodim yoki
+  registratorga tushadi (Admin → Xodimlar → tahrirlash). Bunday xodim
+  bo'lmasa, murojaat yaratilmaydi (409).
+- **Fakultet menejeri** — quyidagi tartib.
+
+Talaba murojaat yuborganda xodimni tanlamaydi. «Fakultet menejeri» yo'nalishida
+tizim talabaning fakultetini aniqlab, o'sha fakultetga biriktirilgan
+Registrator ofis xodimiga murojaatni avtomatik biriktiradi:
 
 - fakultetga **bitta** registrator biriktirilgan bo'lsa — murojaat o'shanga tushadi;
 - **bir nechta** bo'lsa — ochiq murojaatlari eng kam bo'lgan xodimga beriladi;
