@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -6,6 +6,7 @@ from app.core.db import get_db
 from app.core.security import get_current_user, require_roles
 from app.models import Department, Faculty, RequestCategory, Role, StudentGroup, User
 from app.schemas.catalog import (
+    AutoReplyFileOut,
     CategoryCreate,
     CategoryOut,
     CategoryTreeNode,
@@ -20,7 +21,16 @@ from app.schemas.catalog import (
     StudentGroupUpdate,
 )
 from app.services.audit_service import log_action
-from app.services.catalog_service import apply_category_update, build_category, category_tree
+from app.services.catalog_service import (
+    add_auto_reply_file,
+    apply_category_update,
+    build_category,
+    category_tree,
+    get_auto_reply_file,
+    list_auto_reply_files,
+    remove_auto_reply_file,
+)
+from app.services.file_service import stored_file_response
 
 router = APIRouter(tags=["catalogs"])
 
@@ -227,6 +237,8 @@ def _category_audit(cat: RequestCategory) -> dict:
         "sla_hours": cat.sla_hours,
         "priority": cat.priority,
         "routing": cat.routing,
+        "auto_reply_description": cat.auto_reply_description,
+        "assignee_id": cat.assignee_id,
         "is_active": cat.is_active,
     }
 
@@ -295,6 +307,81 @@ async def deactivate_category(
         action="category.deactivate",
         entity_type="category",
         entity_id=cat.id,
+    )
+    await db.commit()
+
+
+async def _category(db: AsyncSession, category_id: int) -> RequestCategory:
+    cat = await db.get(RequestCategory, category_id)
+    if not cat:
+        raise HTTPException(status_code=404, detail="Kategoriya topilmadi")
+    return cat
+
+
+@admin_router.get("/categories/{category_id}/files", response_model=list[AutoReplyFileOut])
+async def list_category_files(
+    category_id: int, db: AsyncSession = Depends(get_db)
+) -> list[AutoReplyFileOut]:
+    """The files an `auto_reply` service sends with its answer."""
+    cat = await _category(db, category_id)
+    return [AutoReplyFileOut.model_validate(f) for f in await list_auto_reply_files(db, cat)]
+
+
+@admin_router.post(
+    "/categories/{category_id}/files", response_model=AutoReplyFileOut, status_code=201
+)
+async def upload_category_file(
+    category_id: int,
+    upload: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(get_current_user),
+) -> AutoReplyFileOut:
+    """Add a file to the answer an `auto_reply` service sends.
+
+    Requests answered from then on get it; earlier answers are left as sent.
+    """
+    cat = await _category(db, category_id)
+    record = await add_auto_reply_file(db, cat, upload, actor)
+    await log_action(
+        db,
+        user_id=actor.id,
+        action="category.file_upload",
+        entity_type="category",
+        entity_id=cat.id,
+        new_value={"file_name": record.file_name, "size": record.file_size},
+    )
+    out = AutoReplyFileOut.model_validate(record)
+    await db.commit()
+    return out
+
+
+@admin_router.get("/categories/{category_id}/files/{file_id}")
+async def download_category_file(
+    category_id: int, file_id: int, db: AsyncSession = Depends(get_db)
+):
+    record = await get_auto_reply_file(db, await _category(db, category_id), file_id)
+    return stored_file_response(
+        record.file_path, mime_type=record.mime_type, file_name=record.file_name
+    )
+
+
+@admin_router.delete("/categories/{category_id}/files/{file_id}", status_code=204)
+async def delete_category_file(
+    category_id: int,
+    file_id: int,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(get_current_user),
+) -> None:
+    """Stop sending a file. Requests already answered keep their copy."""
+    cat = await _category(db, category_id)
+    record = await remove_auto_reply_file(db, cat, file_id)
+    await log_action(
+        db,
+        user_id=actor.id,
+        action="category.file_delete",
+        entity_type="category",
+        entity_id=cat.id,
+        old_value={"file_name": record.file_name, "size": record.file_size},
     )
     await db.commit()
 

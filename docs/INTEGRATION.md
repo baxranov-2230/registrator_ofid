@@ -34,9 +34,9 @@ yuboriladi. Xizmat turidagi `routing` murojaat qayerga tushishini bildiradi:
 
 | `routing` | Ma'nosi |
 |---|---|
-| `auto_reply` | Tizim darhol `auto_reply_text` bilan javob beradi. Murojaat `completed` holatida qaytadi, `answer` to'ldirilgan. |
+| `auto_reply` | Tizim darhol `auto_reply_text` (va bo'lsa `auto_reply_description` — tasnifi, hamda xizmat turi fayllari) bilan javob beradi. Murojaat `completed` holatida qaytadi, `answer` to'ldirilgan. |
 | `faculty_manager` | Talabaning fakultetiga biriktirilgan xodimga tushadi (quyida). |
-| `general_manager` | Fakultetdan qat'i nazar, umumiy masalalar bo'yicha menejerga tushadi. |
+| `general_manager` | Fakultetdan qat'i nazar, xizmat turiga biriktirilgan mas'ul xodimga (`assignee_id`), u bo'lmasa umumiy masalalar bo'yicha menejerga tushadi. |
 
 SLA (`sla_hours`) va ustuvorlik (`priority`) ham xizmat turidan olinadi.
 
@@ -54,10 +54,11 @@ maydonlar: [6-bo'lim, «Murojaat yaratish»](#murojaat-yaratish).
 `faculty_manager` xizmat turlarida murojaat talabaning fakulteti (va bo'limi)
 ga biriktirilgan xodimga avtomatik yo'naltiriladi va darhol `in_progress`
 holatida qaytadi. Fakultetda xodim bo'lmasa, fakultet registratoriga tushadi.
-`general_manager` da umumiy masalalar bo'yicha menejerga tushadi, u ham
-`in_progress` bo'ladi. `auto_reply` da murojaat darhol `completed` bo'ladi:
-`request.created` dan keyin `request.status_changed` webhook'i `answer` bilan
-keladi (`answered_by_name` — `null`). Ijro muddati
+`general_manager` da xizmat turining mas'ul xodimiga, u bo'lmasa umumiy
+masalalar bo'yicha menejerga tushadi, u ham `in_progress` bo'ladi. `auto_reply` da murojaat darhol `completed` bo'ladi:
+`request.created` dan keyin har bir javob fayli uchun `request.file_added`,
+so'ng `request.status_changed` webhook'i `answer` bilan keladi
+(`answered_by_name` — `null`). Ijro muddati
 (`sla_deadline`) faqat ish kunlari (dushanba–juma, bayramlarsiz) bo'yicha
 hisoblanadi.
 
@@ -88,6 +89,7 @@ Murojaat faqat xodimning **yakuniy javobi** bilan yopiladi. Javob tafsilotda
 ```json
 "answer": {
   "text": "Ma'lumotnoma tayyor, ilovada.",
+  "description": null,
   "answered_at": "2026-09-29T10:20:00+00:00",
   "answered_by": 4,
   "answered_by_name": "Aziz Toshev",
@@ -97,6 +99,9 @@ Murojaat faqat xodimning **yakuniy javobi** bilan yopiladi. Javob tafsilotda
   ]
 }
 ```
+
+`description` — javob tasnifi. Uni faqat avtomatik javob olib keladi (xizmat
+turining `auto_reply_description`); xodim javobida doim `null`.
 
 Javob fayllari `files` ro'yxatida ham `is_answer: true` bilan turadi va odatdagi
 `GET /integration/requests/{id}/files/{file_id}` orqali yuklab olinadi.
@@ -142,7 +147,7 @@ X-ROYD-Signature: sha256=<hex>
 | Hodisa | Qo'shimcha maydonlar (`data` ichida) |
 |---|---|
 | `request.created` | — |
-| `request.status_changed` | `old_status`, `comment`; `completed` ga o'tganda `answer`: `text`, `answered_at`, `answered_by_name`, `files` |
+| `request.status_changed` | `old_status`, `comment`; `completed` ga o'tganda `answer`: `text`, `description`, `answered_at`, `answered_by_name`, `files` |
 | `request.message_created` | `message`: `id`, `content`, `sender_name`, `sender_role`, `from_student` |
 | `request.file_added` | `file`: `id`, `file_name`, `file_size`, `mime_type`, `from_student`, `is_answer` |
 

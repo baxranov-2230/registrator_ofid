@@ -89,6 +89,9 @@ class Request(Base, TimestampMixin):
     #: the student reads as the outcome. Files sent with it are the request's
     #: files flagged `is_answer`.
     answer_text: Mapped[str | None] = mapped_column(Text)
+    #: "Tasnifi" of the answer. Only an automatic answer carries one, copied
+    #: from its service's `auto_reply_description`.
+    answer_description: Mapped[str | None] = mapped_column(Text)
     answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     answered_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
 

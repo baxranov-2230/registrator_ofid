@@ -1,7 +1,7 @@
 from app.models.api_client import ApiClient
 from app.models.audit import AuditLog
 from app.models.base import Base
-from app.models.category import RequestCategory
+from app.models.category import AutoReplyFile, RequestCategory
 from app.models.faculty import Department, Faculty, StudentGroup
 from app.models.notification import Notification
 from app.models.outbox import OutboxMessage
@@ -13,6 +13,7 @@ from app.models.user import User
 __all__ = [
     "ApiClient",
     "AuditLog",
+    "AutoReplyFile",
     "Base",
     "Department",
     "Employee",

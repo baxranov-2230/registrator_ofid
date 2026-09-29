@@ -2,21 +2,24 @@
 
 A request type ("Murojaat turi") is a root row carrying only a name and a
 description. A service type ("Xizmat turi") is its child and carries what is
-applied to a request filed under it: SLA, priority and routing. The admin
-rules that keep the tree at exactly two levels live here.
+applied to a request filed under it: SLA, priority, routing, the answer an
+automatic service sends (text, description and files) and — for general
+issues — the employee who receives it. The admin rules that keep the tree at
+exactly two levels live here.
 
 The client narrows the list down to one service by first picking a type, but
 that narrowing is a convenience, not a guarantee: a request can be posted
 straight to the API. Every rule the form enforces is therefore re-checked here.
 """
 
-from fastapi import HTTPException
-from sqlalchemy import select
+from fastapi import HTTPException, UploadFile
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import RequestCategory
+from app.models import AutoReplyFile, RequestCategory, Role, User
 from app.models.category import ServiceRouting
 from app.schemas.catalog import CategoryCreate, CategoryOut, CategoryTreeNode
+from app.services.file_service import MAX_ANSWER_FILES, save_auto_reply_upload
 
 
 def _clean(text: str | None) -> str | None:
@@ -53,6 +56,36 @@ def _check_auto_reply(routing: str, auto_reply_text: str | None) -> None:
         )
 
 
+async def _check_assignee(db: AsyncSession, routing: str, assignee_id: int | None) -> None:
+    """The employee chosen to receive a service's requests must be able to.
+
+    Only a general-issues service takes one: the other routes pick the handler
+    themselves, so an assignee there would be stored and silently ignored.
+    Routing only ever hands requests to active staff and registrators, so
+    anyone else would look like coverage while receiving nothing.
+    """
+    if assignee_id is None:
+        return
+    if routing != ServiceRouting.GENERAL_MANAGER:
+        raise HTTPException(
+            status_code=400,
+            detail="Mas'ul xodim faqat «Umumiy masalalar menejeriga» yo'nalishida biriktiriladi",
+        )
+    role_name = (
+        await db.execute(
+            select(Role.name)
+            .select_from(User)
+            .join(Role)
+            .where(User.id == assignee_id, User.is_active.is_(True))
+        )
+    ).scalar_one_or_none()
+    if role_name not in (Role.STAFF, Role.REGISTRATOR):
+        raise HTTPException(
+            status_code=400,
+            detail="Mas'ul xodim faqat faol xodim yoki registrator bo'lishi mumkin",
+        )
+
+
 async def build_category(db: AsyncSession, data: CategoryCreate) -> RequestCategory:
     """A new request type, or a service type when `parent_id` names one."""
     if data.parent_id is None:
@@ -68,6 +101,7 @@ async def build_category(db: AsyncSession, data: CategoryCreate) -> RequestCateg
     else:
         parent = await _parent_request_type(db, data.parent_id)
         _check_auto_reply(data.routing, data.auto_reply_text)
+        await _check_assignee(db, data.routing, data.assignee_id)
         cat = RequestCategory(
             parent_id=parent.id,
             name=data.name.strip(),
@@ -76,6 +110,8 @@ async def build_category(db: AsyncSession, data: CategoryCreate) -> RequestCateg
             priority=data.priority,
             routing=data.routing,
             auto_reply_text=_clean(data.auto_reply_text),
+            auto_reply_description=_clean(data.auto_reply_description),
+            assignee_id=data.assignee_id,
             icon=data.icon,
             is_active=True,
         )
@@ -105,7 +141,7 @@ async def apply_category_update(db: AsyncSession, cat: RequestCategory, payload:
     for field in ("name", "sla_hours", "priority", "routing", "is_active"):
         if field in payload and payload[field] is None:
             del payload[field]
-    for field in ("description", "auto_reply_text"):
+    for field in ("description", "auto_reply_text", "auto_reply_description"):
         if field in payload:
             payload[field] = _clean(payload[field])
     if "name" in payload and payload["name"] is not None:
@@ -116,7 +152,88 @@ async def apply_category_update(db: AsyncSession, cat: RequestCategory, payload:
 
     if cat.parent_id is not None:
         _check_auto_reply(cat.routing, cat.auto_reply_text)
+    if "assignee_id" in payload:
+        await _check_assignee(db, cat.routing, cat.assignee_id)
+    elif cat.routing != ServiceRouting.GENERAL_MANAGER:
+        # Moving off general routing drops the chosen employee, so switching
+        # back later does not quietly revive a stale choice.
+        cat.assignee_id = None
     await db.flush()
+
+
+async def list_auto_reply_files(db: AsyncSession, cat: RequestCategory) -> list[AutoReplyFile]:
+    return list(
+        (
+            await db.execute(
+                select(AutoReplyFile)
+                .where(AutoReplyFile.category_id == cat.id)
+                .order_by(AutoReplyFile.created_at, AutoReplyFile.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def add_auto_reply_file(
+    db: AsyncSession, cat: RequestCategory, upload: UploadFile, uploader: User
+) -> AutoReplyFile:
+    """Attach a file to the answer an `auto_reply` service sends.
+
+    Only such a service takes one: on any other route it would be stored and
+    never sent. The answer as a whole keeps the cap a handler's answer has.
+    """
+    if cat.parent_id is None or cat.routing != ServiceRouting.AUTO_REPLY:
+        raise HTTPException(
+            status_code=400,
+            detail="Fayl faqat «Avtomatik javob» yo'nalishidagi xizmat turiga biriktiriladi",
+        )
+    count = (
+        await db.execute(
+            select(func.count())
+            .select_from(AutoReplyFile)
+            .where(AutoReplyFile.category_id == cat.id)
+        )
+    ).scalar_one()
+    if count >= MAX_ANSWER_FILES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Javobga ko'pi bilan {MAX_ANSWER_FILES} ta fayl biriktiring",
+        )
+    meta = await save_auto_reply_upload(upload, category_id=cat.id)
+    record = AutoReplyFile(category_id=cat.id, uploaded_by=uploader.id, **meta)
+    db.add(record)
+    await db.flush()
+    return record
+
+
+async def get_auto_reply_file(
+    db: AsyncSession, cat: RequestCategory, file_id: int
+) -> AutoReplyFile:
+    record = (
+        await db.execute(
+            select(AutoReplyFile).where(
+                AutoReplyFile.id == file_id, AutoReplyFile.category_id == cat.id
+            )
+        )
+    ).scalar_one_or_none()
+    if record is None:
+        raise HTTPException(status_code=404, detail="Fayl topilmadi")
+    return record
+
+
+async def remove_auto_reply_file(
+    db: AsyncSession, cat: RequestCategory, file_id: int
+) -> AutoReplyFile:
+    """Stop sending a file with the service's answer.
+
+    Only the row goes. The bytes stay on disk: requests already answered point
+    at them (`AutoReplyFile`).
+    """
+    record = await get_auto_reply_file(db, cat, file_id)
+    await db.delete(record)
+    await db.flush()
+    return record
 
 
 async def category_tree(
@@ -137,10 +254,13 @@ async def category_tree(
     roots: list[CategoryTreeNode] = []
     for r in rows:
         node = nodes[r.id]
-        if r.parent_id and r.parent_id in nodes:
-            nodes[r.parent_id].children.append(node)
-        else:
+        if r.parent_id is None:
             roots.append(node)
+        elif r.parent_id in nodes:
+            nodes[r.parent_id].children.append(node)
+        # Otherwise the service's request type was retired and filtered out.
+        # Nothing can be filed under it any more (`resolve_service`), and
+        # listed on its own it would pass for a request type.
     return roots
 
 

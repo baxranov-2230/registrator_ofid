@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -54,9 +55,11 @@ class DepartmentCreate(BaseModel):
 class CategoryOut(BaseModel):
     """A catalogue node: a request type (root) or a service type (child).
 
-    `sla_hours`, `priority`, `routing` and `auto_reply_text` describe how a
-    request filed under a service type is handled; on a request type they are
-    unused.
+    `sla_hours`, `priority`, `routing`, `auto_reply_text`,
+    `auto_reply_description` and `assignee_id` describe how a request filed
+    under a service type is handled; on a request type they are unused. An
+    automatic answer's files are listed on their own
+    (`GET /admin/categories/{id}/files`).
     """
 
     model_config = ConfigDict(from_attributes=True)
@@ -68,12 +71,29 @@ class CategoryOut(BaseModel):
     priority: str
     routing: str
     auto_reply_text: str | None = None
+    #: "Tasnifi" sent with `auto_reply_text`.
+    auto_reply_description: str | None = None
+    #: The employee a `general_manager` service's requests go to; `None`
+    #: means the flagged general managers.
+    assignee_id: int | None = None
     is_active: bool
     icon: str | None = None
 
 
 class CategoryTreeNode(CategoryOut):
     children: list["CategoryTreeNode"] = []
+
+
+class AutoReplyFileOut(BaseModel):
+    """A file an `auto_reply` service sends with its answer."""
+
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    category_id: int
+    file_name: str
+    file_size: int
+    mime_type: str
+    created_at: datetime
 
 
 PRIORITIES = ("low", "normal", "high", "critical")
@@ -92,6 +112,10 @@ class CategoryCreate(BaseModel):
     priority: Literal["low", "normal", "high", "critical"] = "normal"
     routing: Routing = "faculty_manager"
     auto_reply_text: str | None = Field(default=None, max_length=10000)
+    auto_reply_description: str | None = Field(default=None, max_length=2000)
+    #: Only with `routing="general_manager"`: an active staff member or
+    #: registrator who receives every request filed under the service.
+    assignee_id: int | None = None
     icon: str | None = None
 
 
@@ -103,6 +127,8 @@ class CategoryUpdate(BaseModel):
     priority: Literal["low", "normal", "high", "critical"] | None = None
     routing: Routing | None = None
     auto_reply_text: str | None = Field(default=None, max_length=10000)
+    auto_reply_description: str | None = Field(default=None, max_length=2000)
+    assignee_id: int | None = None
     icon: str | None = None
     is_active: bool | None = None
 

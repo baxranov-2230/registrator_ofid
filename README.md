@@ -53,12 +53,18 @@ turlari** bo'ladi. Talaba xizmat turini tanlaydi; SLA va ustuvorlik shu xizmat
 turidan olinadi. Qayerga yuborilishini ham xizmat turi hal qiladi (Admin →
 Murojaat turlari → xizmat turini tahrirlash → «Yo'nalishi»):
 
-- **Avtomatik javob** — tizim xizmat turida yozilgan javob matnini darhol
+- **Avtomatik javob** — tizim xizmat turida yozilgan javobni darhol
   yuboradi, murojaat «Javob berildi» holatida yopiladi. Menejerga tushmaydi.
+  Javob matnidan tashqari ixtiyoriy «Tasnifi» va fayllar (ko'pi bilan 10 ta)
+  biriktirish mumkin; ular har bir avtomatik javobga qo'shiladi. Xizmat
+  turidan olib tashlangan fayl avval berilgan javoblarda saqlanib qoladi.
 - **Umumiy masalalar bo'yicha menejer** — murojaat fakultetdan qat'i nazar
-  «Umumiy masalalar bo'yicha menejer» belgisi qo'yilgan xodim yoki
-  registratorga tushadi (Admin → Xodimlar → tahrirlash). Bunday xodim
-  bo'lmasa, murojaat yaratilmaydi (409).
+  shu xizmat turiga biriktirilgan mas'ul xodimga tushadi (xizmat turini
+  tahrirlash → «Mas'ul xodim»; faqat faol xodim yoki registrator). Mas'ul
+  xodim tanlanmagan yoki u nofaol bo'lib qolgan bo'lsa, «Umumiy masalalar
+  bo'yicha menejer» belgisi qo'yilgan xodim yoki registratorga tushadi
+  (Admin → Xodimlar → tahrirlash). Ikkalasi ham bo'lmasa, murojaat
+  yaratilmaydi (409).
 - **Fakultet menejeri** — quyidagi tartib.
 
 Talaba murojaat yuborganda xodimni tanlamaydi. «Fakultet menejeri» yo'nalishida

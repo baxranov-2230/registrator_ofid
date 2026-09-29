@@ -68,6 +68,22 @@ async def test_service_type_nests_only_under_a_request_type(client, login, seede
     assert {c["id"] for c in request_type["children"]} >= {service["id"], seeded["category_id"]}
 
 
+async def test_retired_request_type_takes_its_services_out_of_the_tree(client, login, seeded):
+    admin = await login(Role.ADMIN)
+    request_type = (await _create(client, admin, {"name": "Eski tur"})).json()
+    service = (
+        await _create(client, admin, {"parent_id": request_type["id"], "name": "Eski xizmat"})
+    ).json()
+    resp = await client.delete(f"/api/v1/admin/categories/{request_type['id']}", headers=admin)
+    assert resp.status_code == 204
+
+    tree = (await client.get("/api/v1/categories", headers=admin)).json()
+    listed = {n["id"] for n in tree} | {c["id"] for n in tree for c in n["children"]}
+    # The service is still active, but it must not surface as a request type.
+    assert service["id"] not in listed
+    assert all(n["parent_id"] is None for n in tree)
+
+
 async def test_auto_reply_needs_its_answer(client, login, seeded):
     admin = await login(Role.ADMIN)
     resp = await _create(
@@ -146,6 +162,86 @@ async def test_general_service_without_a_general_manager_is_refused(client, logi
     service = await _service(client, admin, seeded, routing="general_manager")
     resp = await _file(client, await login(Role.STUDENT), service["id"])
     assert resp.status_code == 409
+
+
+async def test_general_service_goes_to_its_chosen_employee(client, login, seeded, session_factory):
+    admin = await login(Role.ADMIN)
+    staff_id = seeded["user_ids"][Role.STAFF]
+    service = await _service(client, admin, seeded, routing="general_manager", assignee_id=staff_id)
+    assert service["assignee_id"] == staff_id
+    # A flagged general manager exists too; the service's own choice wins.
+    await _make_general_manager(session_factory, seeded["user_ids"][Role.REGISTRATOR])
+
+    resp = await _file(client, await login(Role.STUDENT), service["id"])
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["assigned_to"] == staff_id
+
+
+async def test_chosen_employee_must_be_able_to_take_requests(client, login, seeded):
+    admin = await login(Role.ADMIN)
+    resp = await _create(
+        client,
+        admin,
+        {
+            "parent_id": seeded["service_type_id"],
+            "name": "Xizmat",
+            "routing": "general_manager",
+            "assignee_id": seeded["user_ids"][Role.LEADERSHIP],
+        },
+    )
+    assert resp.status_code == 400
+
+    # Other routes pick their handler themselves.
+    resp = await _create(
+        client,
+        admin,
+        {
+            "parent_id": seeded["service_type_id"],
+            "name": "Xizmat",
+            "routing": "faculty_manager",
+            "assignee_id": seeded["user_ids"][Role.STAFF],
+        },
+    )
+    assert resp.status_code == 400
+
+
+async def test_leaving_general_routing_drops_the_chosen_employee(client, login, seeded):
+    admin = await login(Role.ADMIN)
+    service = await _service(
+        client,
+        admin,
+        seeded,
+        routing="general_manager",
+        assignee_id=seeded["user_ids"][Role.STAFF],
+    )
+    resp = await client.patch(
+        f"/api/v1/admin/categories/{service['id']}",
+        headers=admin,
+        json={"routing": "faculty_manager"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["assignee_id"] is None
+
+
+async def test_deactivated_chosen_employee_falls_back_to_general_managers(
+    client, login, seeded, session_factory
+):
+    admin = await login(Role.ADMIN)
+    staff_id = seeded["user_ids"][Role.STAFF]
+    service = await _service(client, admin, seeded, routing="general_manager", assignee_id=staff_id)
+    student = await login(Role.STUDENT)
+    async with session_factory() as db:
+        (await db.get(User, staff_id)).is_active = False
+        await db.commit()
+
+    resp = await _file(client, student, service["id"])
+    assert resp.status_code == 409
+
+    registrator_id = seeded["user_ids"][Role.REGISTRATOR]
+    await _make_general_manager(session_factory, registrator_id)
+    resp = await _file(client, student, service["id"])
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["assigned_to"] == registrator_id
 
 
 async def test_faculty_service_keeps_faculty_routing(client, login, seeded, session_factory):

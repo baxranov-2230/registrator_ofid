@@ -313,7 +313,7 @@
     "noFaculty": "Biriktirilmagan",
     "unboundFaculties": "Quyidagi fakultetlarga Registrator ofis xodimi biriktirilmagan: {{names}}. Bu fakultet talabalari murojaat yubora olmaydi.",
     "generalManagerBadge": "Umumiy masalalar",
-    "noGeneralManager": "Umumiy masalalar bo'yicha menejer belgilanmagan, shuning uchun quyidagi xizmat turlariga murojaat yuborib bo'lmaydi: {{names}}. Xodimni tahrirlab «Umumiy masalalar bo'yicha menejer»ni yoqing."
+    "noGeneralManager": "Umumiy masalalar bo'yicha menejer belgilanmagan va xizmat turiga mas'ul xodim biriktirilmagan, shuning uchun quyidagi xizmat turlariga murojaat yuborib bo'lmaydi: {{names}}. Xodimni tahrirlab «Umumiy masalalar bo'yicha menejer»ni yoqing yoki «Murojaat turlari» sahifasida xizmat turiga mas'ul xodim biriktiring."
   },
   "faculties": {
     "subtitle": "Fakultet va kafedralarni boshqarish",
@@ -371,7 +371,15 @@
       "routing": "Xizmat turi yo'nalishi",
       "autoReplyText": "Avtomatik javob matni",
       "autoReplyHint": "Talaba murojaat yuborishi bilan shu matn yakuniy javob sifatida yuboriladi va murojaat yopiladi.",
-      "generalHint": "Umumiy masalalar bo'yicha menejer «Xodimlar» sahifasida xodimni tahrirlab belgilanadi."
+      "autoReplyDescription": "Tasnifi",
+      "autoReplyDescriptionHint": "Ixtiyoriy. Javobda matndan oldin ko'rsatiladi.",
+      "autoReplyFiles": "Javob fayllari",
+      "autoReplyFilesHint": "Har bir avtomatik javobga biriktiriladi. PDF, JPG, PNG, WEBP, DOC, DOCX; ko'pi bilan {{max}} ta.",
+      "fileFailed": "Xizmat turi saqlandi, lekin «{{name}}» fayli bilan xatolik: {{error}}. Qayta «Saqlash»ni bosing.",
+      "assignee": "Mas'ul xodim",
+      "assigneeHint": "Bu xizmat turi bo'yicha barcha murojaatlar shu xodimga tushadi. Bo'sh qoldirilsa, «Xodimlar» sahifasida belgilangan umumiy masalalar menejerlariga tushadi.",
+      "assigneeEmpty": "Xodim topilmadi",
+      "assigneeStale": "Avval tanlangan xodim endi faol emas, shuning uchun murojaatlar umumiy masalalar menejerlariga tushmoqda. Boshqa xodimni tanlang yoki bo'sh qoldiring."
     },
     "routing": {
       "auto_reply": "Avtomatik javob",
@@ -385,6 +393,7 @@
     },
     "deactivateConfirm": "'{{name}}' xizmat turini nofaol qilasizmi? Eski murojaatlar saqlanib qoladi.",
     "deactivateTypeConfirm": "'{{name}}' murojaat turini nofaol qilasizmi? Uning xizmat turlariga ham murojaat yuborib bo'lmaydi. Eski murojaatlar saqlanib qoladi.",
+    "assigneeInactive": "Mas'ul xodim faol emas",
     "inactive": "Nofaol"
   },
   "audit": {

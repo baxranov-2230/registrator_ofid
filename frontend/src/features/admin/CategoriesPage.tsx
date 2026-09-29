@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
@@ -26,23 +27,34 @@ import {
 } from "@mui/material";
 import AddIcon from "@mui/icons-material/Add";
 import AccessTimeIcon from "@mui/icons-material/AccessTime";
+import AttachFileIcon from "@mui/icons-material/AttachFile";
+import CloseIcon from "@mui/icons-material/Close";
+import DownloadIcon from "@mui/icons-material/Download";
 import EditIcon from "@mui/icons-material/EditOutlined";
 import BlockIcon from "@mui/icons-material/BlockOutlined";
 import AutoReplyIcon from "@mui/icons-material/SmartToyOutlined";
 import FacultyIcon from "@mui/icons-material/SchoolOutlined";
 import GeneralIcon from "@mui/icons-material/SupportAgentOutlined";
+import PersonIcon from "@mui/icons-material/PersonOutline";
+import WarningIcon from "@mui/icons-material/WarningAmberOutlined";
 
 import PageHeader from "@/shared/components/PageHeader";
 import {
+  AutoReplyFileOut,
   CategoryNode,
   Priority,
   SERVICE_ROUTINGS,
   ServiceRouting,
   useCreateCategoryMutation,
   useDeactivateCategoryMutation,
+  useDeleteAutoReplyFileMutation,
+  useDownloadAutoReplyFileMutation,
+  useListAutoReplyFilesQuery,
   useListCategoriesQuery,
   useUpdateCategoryMutation,
+  useUploadAutoReplyFileMutation,
 } from "@/features/admin/adminApi";
+import { useListAssigneesQuery } from "@/features/requests/requestsApi";
 import { formatApiError } from "@/shared/api/errors";
 
 const PRIORITY_COLORS: Record<string, string> = {
@@ -51,6 +63,11 @@ const PRIORITY_COLORS: Record<string, string> = {
   high: "#F59E0B",
   critical: "#EF4444",
 };
+
+/** Mirrors MAX_ANSWER_FILES on the server: an automatic answer has a handler's cap. */
+const MAX_AUTO_REPLY_FILES = 10;
+/** The types the server accepts (file_service._ALLOWED_MIME). */
+const ACCEPTED_FILES = ".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx";
 
 const ROUTING_META: Record<ServiceRouting, { color: string; Icon: typeof AutoReplyIcon }> = {
   auto_reply: { color: "#8B5CF6", Icon: AutoReplyIcon },
@@ -61,7 +78,9 @@ const ROUTING_META: Record<ServiceRouting, { color: string; Icon: typeof AutoRep
 /**
  * Two levels: a request type ("Murojaat turi") is a name and a description;
  * the service types inside it ("Xizmat turi") carry the priority, SLA and the
- * routing the backend applies when a request is filed under one.
+ * routing the backend applies when a request is filed under one. A service
+ * routed to general issues may also name the employee who receives it; one
+ * that answers itself carries the answer: a description, text and files.
  */
 type DialogState =
   | { kind: "type"; edit?: CategoryNode }
@@ -72,6 +91,12 @@ export default function CategoriesPage() {
   const { data: tree = [], isLoading, error } = useListCategoriesQuery();
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [deactivate] = useDeactivateCategoryMutation();
+  // Active staff and registrators only — the people routing may hand work to.
+  const { data: assignees } = useListAssigneesQuery();
+  const assigneeName = useMemo(
+    () => (assignees ? new Map(assignees.map((a) => [a.id, a.full_name])) : undefined),
+    [assignees],
+  );
 
   const handleDeactivate = async (node: CategoryNode) => {
     const key = node.parent_id === null ? "categories.deactivateTypeConfirm" : "categories.deactivateConfirm";
@@ -111,6 +136,7 @@ export default function CategoriesPage() {
               onAddService={() => setDialog({ kind: "service", parent: type })}
               onEditService={(edit) => setDialog({ kind: "service", parent: type, edit })}
               onDeactivate={handleDeactivate}
+              assigneeName={assigneeName}
             />
           ))}
         </Stack>
@@ -130,12 +156,14 @@ function RequestTypeCard({
   onAddService,
   onEditService,
   onDeactivate,
+  assigneeName,
 }: {
   type: CategoryNode;
   onEdit: () => void;
   onAddService: () => void;
   onEditService: (service: CategoryNode) => void;
   onDeactivate: (node: CategoryNode) => void;
+  assigneeName?: Map<number, string>;
 }) {
   const { t } = useTranslation();
   return (
@@ -197,6 +225,7 @@ function RequestTypeCard({
                 service={service}
                 onEdit={() => onEditService(service)}
                 onDeactivate={() => onDeactivate(service)}
+                assigneeName={assigneeName}
               />
             ))}
           </Stack>
@@ -210,13 +239,20 @@ function ServiceTypeRow({
   service,
   onEdit,
   onDeactivate,
+  assigneeName,
 }: {
   service: CategoryNode;
   onEdit: () => void;
   onDeactivate: () => void;
+  /** Unset while the directory loads, so nobody is flagged inactive early. */
+  assigneeName?: Map<number, string>;
 }) {
   const { t } = useTranslation();
   const routing = ROUTING_META[service.routing] ?? ROUTING_META.faculty_manager;
+  const assignee =
+    service.routing === "general_manager" && service.assignee_id !== null && assigneeName
+      ? assigneeName.get(service.assignee_id) ?? null
+      : undefined;
   return (
     <Stack direction="row" alignItems="center" spacing={1} sx={{ pl: { xs: 2.5, sm: 4 }, pr: 2.5, py: 1.5 }}>
       <Box sx={{ flexGrow: 1, minWidth: 0 }}>
@@ -230,6 +266,26 @@ function ServiceTypeRow({
             label={t(`categories.routing.${service.routing}`)}
             sx={{ bgcolor: routing.color + "15", color: routing.color, fontWeight: 600 }}
           />
+          {assignee ? (
+            <Chip
+              size="small"
+              icon={<PersonIcon sx={{ fontSize: 16 }} />}
+              label={assignee}
+              variant="outlined"
+            />
+          ) : (
+            // Routing already falls back to the flagged general managers;
+            // this only tells the admin their choice is no longer in effect.
+            assignee === null && (
+              <Chip
+                size="small"
+                icon={<WarningIcon sx={{ fontSize: 16 }} />}
+                label={t("categories.assigneeInactive")}
+                color="warning"
+                variant="outlined"
+              />
+            )
+          )}
           <Chip
             size="small"
             icon={<AccessTimeIcon sx={{ fontSize: 14 }} />}
@@ -342,42 +398,111 @@ function ServiceTypeDialog({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const [create, createState] = useCreateCategoryMutation();
-  const [update, updateState] = useUpdateCategoryMutation();
+  const [create] = useCreateCategoryMutation();
+  const [update] = useUpdateCategoryMutation();
+  const [uploadFile] = useUploadAutoReplyFileMutation();
+  const [deleteFile] = useDeleteAutoReplyFileMutation();
+  const [downloadFile] = useDownloadAutoReplyFileMutation();
+  // Set once the service exists: on edit, or after a create whose file
+  // uploads then failed, so saving again updates instead of creating twice.
+  const [savedId, setSavedId] = useState<number | null>(edit?.id ?? null);
+  const filesQuery = useListAutoReplyFilesQuery(savedId ?? 0, { skip: savedId === null });
+  // File changes wait for "Save", like every other field of the dialog.
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [removedFileIds, setRemovedFileIds] = useState<number[]>([]);
+  const assigneesQuery = useListAssigneesQuery();
+  const assignees = useMemo(() => assigneesQuery.data ?? [], [assigneesQuery.data]);
   const [form, setForm] = useState<{
     name: string;
     priority: Priority;
     sla_hours: string;
     routing: ServiceRouting;
     auto_reply_text: string;
+    auto_reply_description: string;
+    assignee_id: number | null;
   }>({
     name: edit?.name ?? "",
     priority: edit?.priority ?? "normal",
     sla_hours: String(edit?.sla_hours ?? 24),
     routing: edit?.routing ?? "faculty_manager",
     auto_reply_text: edit?.auto_reply_text ?? "",
+    auto_reply_description: edit?.auto_reply_description ?? "",
+    assignee_id: edit?.assignee_id ?? null,
   });
   const [err, setErr] = useState<string | null>(null);
-  const saving = createState.isLoading || updateState.isLoading;
+  const [saving, setSaving] = useState(false);
   const autoReply = form.routing === "auto_reply";
+  const keptFiles = (filesQuery.data ?? []).filter((f) => !removedFileIds.includes(f.id));
+  const general = form.routing === "general_manager";
+  const assignee = assignees.find((a) => a.id === form.assignee_id) ?? null;
+  // Chosen earlier, since deactivated or moved out of a handling role. The
+  // backend already routes past them; saving records that.
+  const staleAssignee = form.assignee_id !== null && assigneesQuery.isSuccess && !assignee;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr(null);
+    setSaving(true);
     const payload = {
       name: form.name,
       priority: form.priority,
       sla_hours: Number(form.sla_hours),
       routing: form.routing,
       auto_reply_text: form.auto_reply_text.trim() || null,
+      auto_reply_description: form.auto_reply_description.trim() || null,
+      assignee_id: general && !staleAssignee ? form.assignee_id : null,
     };
+    let id = savedId;
     try {
-      if (edit) {
-        await update({ id: edit.id, data: payload }).unwrap();
+      if (id !== null) {
+        await update({ id, data: payload }).unwrap();
       } else {
-        await create({ parent_id: parent.id, ...payload }).unwrap();
+        id = (await create({ parent_id: parent.id, ...payload }).unwrap()).id;
+        setSavedId(id);
+      }
+    } catch (e: unknown) {
+      setErr(formatApiError(e, t("common.error")));
+      setSaving(false);
+      return;
+    }
+
+    // Removals first, so they free room under the cap for the additions. Each
+    // step leaves the pending lists as soon as it lands: after a failure,
+    // saving again retries only what is left.
+    let current = "";
+    try {
+      for (const fileId of removedFileIds) {
+        current = keptFiles.find((f) => f.id === fileId)?.file_name ?? "";
+        await deleteFile({ id, fileId }).unwrap();
+        setRemovedFileIds((prev) => prev.filter((x) => x !== fileId));
+      }
+      // Only an automatic answer sends files; the server refuses them elsewhere.
+      if (autoReply) {
+        for (const file of pendingFiles) {
+          current = file.name;
+          await uploadFile({ id, file }).unwrap();
+          setPendingFiles((prev) => prev.filter((f) => f !== file));
+        }
       }
       onClose();
+    } catch (e: unknown) {
+      const error = formatApiError(e, t("common.error"));
+      setErr(t("categories.form.fileFailed", { name: current, error }));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDownload = async (file: AutoReplyFileOut) => {
+    if (savedId === null) return;
+    setErr(null);
+    try {
+      const url = await downloadFile({ id: savedId, fileId: file.id }).unwrap();
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file.file_name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch (e: unknown) {
       setErr(formatApiError(e, t("common.error")));
     }
@@ -479,20 +604,79 @@ function ServiceTypeDialog({
             </FormControl>
 
             {autoReply && (
-              <TextField
-                label={t("categories.form.autoReplyText")}
-                helperText={t("categories.form.autoReplyHint")}
-                value={form.auto_reply_text}
-                onChange={(e) => setForm((f) => ({ ...f, auto_reply_text: e.target.value }))}
-                required
-                fullWidth
-                multiline
-                minRows={4}
-                inputProps={{ maxLength: 10000 }}
-              />
+              <>
+                <TextField
+                  label={t("categories.form.autoReplyDescription")}
+                  helperText={t("categories.form.autoReplyDescriptionHint")}
+                  value={form.auto_reply_description}
+                  onChange={(e) =>
+                    setForm((f) => ({ ...f, auto_reply_description: e.target.value }))
+                  }
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  inputProps={{ maxLength: 2000 }}
+                />
+                <TextField
+                  label={t("categories.form.autoReplyText")}
+                  helperText={t("categories.form.autoReplyHint")}
+                  value={form.auto_reply_text}
+                  onChange={(e) => setForm((f) => ({ ...f, auto_reply_text: e.target.value }))}
+                  required
+                  fullWidth
+                  multiline
+                  minRows={4}
+                  inputProps={{ maxLength: 10000 }}
+                />
+                <AutoReplyFilesField
+                  saved={keptFiles}
+                  pending={pendingFiles}
+                  loading={filesQuery.isLoading}
+                  disabled={saving}
+                  onAdd={(picked) => {
+                    const room = Math.max(0, MAX_AUTO_REPLY_FILES - keptFiles.length);
+                    setPendingFiles((prev) => [...prev, ...picked].slice(0, room));
+                  }}
+                  onRemoveSaved={(file) => setRemovedFileIds((prev) => [...prev, file.id])}
+                  onRemovePending={(file) =>
+                    setPendingFiles((prev) => prev.filter((f) => f !== file))
+                  }
+                  onDownload={handleDownload}
+                />
+              </>
             )}
-            {form.routing === "general_manager" && (
-              <Alert severity="info">{t("categories.form.generalHint")}</Alert>
+            {general && (
+              <>
+                {staleAssignee && (
+                  <Alert severity="warning">{t("categories.form.assigneeStale")}</Alert>
+                )}
+                <Autocomplete
+                  options={assignees}
+                  value={assignee}
+                  onChange={(_, value) => setForm((f) => ({ ...f, assignee_id: value?.id ?? null }))}
+                  getOptionLabel={(a) => a.full_name}
+                  isOptionEqualToValue={(a, b) => a.id === b.id}
+                  loading={assigneesQuery.isLoading}
+                  noOptionsText={t("categories.form.assigneeEmpty")}
+                  renderOption={(props, a) => (
+                    <li {...props} key={a.id}>
+                      <Box>
+                        <Typography variant="body2">{a.full_name}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {t(`role.${a.role.name}`)}
+                        </Typography>
+                      </Box>
+                    </li>
+                  )}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label={t("categories.form.assignee")}
+                      helperText={t("categories.form.assigneeHint")}
+                    />
+                  )}
+                />
+              </>
             )}
           </Stack>
         </DialogContent>
@@ -504,5 +688,119 @@ function ServiceTypeDialog({
         </DialogActions>
       </form>
     </Dialog>
+  );
+}
+
+/**
+ * The files an automatic answer sends: those already on the service, and
+ * those picked in this dialog that upload on "Save".
+ */
+function AutoReplyFilesField({
+  saved,
+  pending,
+  loading,
+  disabled,
+  onAdd,
+  onRemoveSaved,
+  onRemovePending,
+  onDownload,
+}: {
+  saved: AutoReplyFileOut[];
+  pending: File[];
+  loading: boolean;
+  disabled: boolean;
+  onAdd: (files: File[]) => void;
+  onRemoveSaved: (file: AutoReplyFileOut) => void;
+  onRemovePending: (file: File) => void;
+  onDownload: (file: AutoReplyFileOut) => void;
+}) {
+  const { t } = useTranslation();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const full = saved.length + pending.length >= MAX_AUTO_REPLY_FILES;
+  const rows = [
+    ...saved.map((f) => ({
+      key: `saved-${f.id}`,
+      name: f.file_name,
+      size: f.file_size,
+      download: () => onDownload(f),
+      remove: () => onRemoveSaved(f),
+    })),
+    ...pending.map((f, i) => ({
+      key: `pending-${i}-${f.name}`,
+      name: f.name,
+      size: f.size,
+      download: undefined,
+      remove: () => onRemovePending(f),
+    })),
+  ];
+
+  return (
+    <Box>
+      <FormLabel>{t("categories.form.autoReplyFiles")}</FormLabel>
+      <Stack direction="row" alignItems="center" spacing={1.5} mt={1} flexWrap="wrap" useFlexGap>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={<AttachFileIcon />}
+          onClick={() => inputRef.current?.click()}
+          disabled={full || disabled}
+        >
+          {t("requests.answerAttach")}
+        </Button>
+        <Typography variant="caption" color="text.secondary">
+          {t("categories.form.autoReplyFilesHint", { max: MAX_AUTO_REPLY_FILES })}
+        </Typography>
+      </Stack>
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        hidden
+        accept={ACCEPTED_FILES}
+        onChange={(e) => {
+          if (e.target.files) onAdd(Array.from(e.target.files));
+          e.target.value = "";
+        }}
+      />
+      {loading ? (
+        <Typography variant="body2" color="text.secondary" mt={1.5}>
+          {t("common.loading")}
+        </Typography>
+      ) : (
+        rows.length > 0 && (
+          <Stack spacing={0.75} mt={1.5}>
+            {rows.map((row) => (
+              <Stack
+                key={row.key}
+                direction="row"
+                alignItems="center"
+                spacing={1}
+                sx={{ px: 1, py: 0.5, border: "1px solid", borderColor: "divider", borderRadius: 1 }}
+              >
+                <AttachFileIcon fontSize="small" color="action" />
+                <Typography variant="body2" noWrap sx={{ flexGrow: 1, minWidth: 0 }}>
+                  {row.name}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" flexShrink={0}>
+                  {(row.size / 1024).toFixed(1)} KB
+                </Typography>
+                {row.download && (
+                  <Tooltip title={t("requests.download")}>
+                    <IconButton size="small" onClick={row.download}>
+                      <DownloadIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                )}
+                <Tooltip title={t("common.delete")}>
+                  <IconButton size="small" onClick={row.remove} disabled={disabled}>
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Stack>
+            ))}
+          </Stack>
+        )
+      )}
+    </Box>
   );
 }

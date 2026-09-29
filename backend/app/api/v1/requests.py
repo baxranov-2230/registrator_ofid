@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from fastapi import (
     APIRouter,
     Depends,
@@ -36,7 +38,7 @@ from app.schemas.request import (
 from app.services import events
 from app.services.audit_service import log_action
 from app.services.email_templates import render, request_link
-from app.services.file_service import resolve_stored_path, save_upload
+from app.services.file_service import MAX_ANSWER_FILES, save_upload, stored_file_response
 from app.services.labels import status_label
 from app.services.notification_service import create_notification
 from app.services.outbox_service import enqueue_email
@@ -91,6 +93,55 @@ async def _notify_user(
     if recipient and recipient.email:
         text, html = render(title, lines, request_link(req.id, link_base))
         await enqueue_email(db, recipient.email, title, text, html)
+
+
+def _answer_lines(req: RequestModel, lead: str) -> list[str]:
+    """The answer as the student's notification spells it out."""
+    return [
+        lead,
+        *([req.answer_description] if req.answer_description else []),
+        req.answer_text or "",
+    ]
+
+
+def _answer_event(
+    req: RequestModel,
+    *,
+    answered_by_name: str | None,
+    files: Sequence[RequestFile | RequestFileOut],
+) -> dict:
+    """The `answer` block of `request.status_changed` on completion."""
+    return {
+        "text": req.answer_text,
+        "description": req.answer_description,
+        "answered_at": req.answered_at.isoformat() if req.answered_at else None,
+        "answered_by_name": answered_by_name,
+        "files": [
+            {
+                "id": f.id,
+                "file_name": f.file_name,
+                "file_size": f.file_size,
+                "mime_type": f.mime_type,
+            }
+            for f in files
+        ],
+    }
+
+
+async def _publish_file_added(db: AsyncSession, req: RequestModel, record: RequestFile) -> None:
+    await events.publish(
+        db,
+        events.REQUEST_FILE_ADDED,
+        req,
+        file={
+            "id": record.id,
+            "file_name": record.file_name,
+            "file_size": record.file_size,
+            "mime_type": record.mime_type,
+            "from_student": record.uploaded_by == req.student_id,
+            "is_answer": record.is_answer,
+        },
+    )
 
 
 async def _notify_assigned(db: AsyncSession, req: RequestModel, assignee_id: int) -> None:
@@ -158,28 +209,27 @@ async def file_request(
     await events.publish(db, events.REQUEST_CREATED, req)
     if req.status == RequestStatus.COMPLETED:
         # The partner learns of every answer from `status_changed`, so an
-        # automatic one is announced the same way as a handler's.
+        # automatic one is announced the same way as a handler's, files
+        # included. `create_request` left the answer files loaded.
+        answer_files = [f for f in req.files if f.is_answer]
         await _notify_user(
             db,
             req.student_id,
             type_=NotificationType.REQUEST_STATUS,
             title=f"Murojaatingizga javob berildi: {req.tracking_no}",
-            lines=[f"'{req.title}' murojaatingiz bo'yicha javob:", req.answer_text or ""],
+            lines=_answer_lines(req, f"'{req.title}' murojaatingiz bo'yicha javob:"),
             req=req,
             link_base="/student/requests",
         )
+        for f in answer_files:
+            await _publish_file_added(db, req, f)
         await events.publish(
             db,
             events.REQUEST_STATUS_CHANGED,
             req,
             old_status=RequestStatus.NEW,
             comment=None,
-            answer={
-                "text": req.answer_text,
-                "answered_at": req.answered_at.isoformat() if req.answered_at else None,
-                "answered_by_name": None,
-                "files": [],
-            },
+            answer=_answer_event(req, answered_by_name=None, files=answer_files),
         )
     return req
 
@@ -285,23 +335,11 @@ async def attach_file(
         entity_id=req.id,
         new_value={"file_name": meta["file_name"], "size": meta["file_size"]},
     )
-    await events.publish(
-        db,
-        events.REQUEST_FILE_ADDED,
-        req,
-        file={
-            "id": record.id,
-            "file_name": record.file_name,
-            "file_size": record.file_size,
-            "mime_type": record.mime_type,
-            "from_student": uploader.id == req.student_id,
-            "is_answer": is_answer,
-        },
-    )
+    await _publish_file_added(db, req, record)
     return RequestFileOut.model_validate(record)
 
 
-async def stored_file_response(db: AsyncSession, req: RequestModel, file_id: int) -> FileResponse:
+async def request_file_response(db: AsyncSession, req: RequestModel, file_id: int) -> FileResponse:
     f = (
         await db.execute(
             select(RequestFile).where(RequestFile.id == file_id, RequestFile.request_id == req.id)
@@ -309,18 +347,7 @@ async def stored_file_response(db: AsyncSession, req: RequestModel, file_id: int
     ).scalar_one_or_none()
     if not f:
         raise HTTPException(status_code=404, detail="Fayl topilmadi")
-
-    path = resolve_stored_path(f.file_path)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Fayl diskda topilmadi")
-
-    return FileResponse(
-        path,
-        media_type=f.mime_type,
-        filename=f.file_name,
-        # Never let the browser render an upload inline in our own origin.
-        headers={"X-Content-Type-Options": "nosniff", "Content-Disposition": "attachment"},
-    )
+    return stored_file_response(f.file_path, mime_type=f.mime_type, file_name=f.file_name)
 
 
 @router.post("", response_model=RequestDetail, status_code=201)
@@ -518,10 +545,6 @@ async def transition(
     return await _detail_for(db, req.id, actor)
 
 
-#: Enough for a document and its annexes; more is a sign of the wrong channel.
-MAX_ANSWER_FILES = 10
-
-
 @router.post("/{request_id}/answer", response_model=RequestDetail)
 async def answer(
     request_id: int,
@@ -561,7 +584,7 @@ async def answer(
         req.student_id,
         type_=NotificationType.REQUEST_STATUS,
         title=f"Murojaatingizga javob berildi: {req.tracking_no}",
-        lines=[f"'{req.title}' murojaatingiz bo'yicha yakuniy javob:", req.answer_text or ""],
+        lines=_answer_lines(req, f"'{req.title}' murojaatingiz bo'yicha yakuniy javob:"),
         req=req,
         link_base="/student/requests",
     )
@@ -571,20 +594,7 @@ async def answer(
         req,
         old_status=old_status,
         comment=None,
-        answer={
-            "text": req.answer_text,
-            "answered_at": req.answered_at.isoformat() if req.answered_at else None,
-            "answered_by_name": actor.full_name,
-            "files": [
-                {
-                    "id": f.id,
-                    "file_name": f.file_name,
-                    "file_size": f.file_size,
-                    "mime_type": f.mime_type,
-                }
-                for f in attached
-            ],
-        },
+        answer=_answer_event(req, answered_by_name=actor.full_name, files=attached),
     )
 
     await db.commit()
@@ -659,4 +669,4 @@ async def download_file(
     user: User = Depends(get_current_user),
 ):
     req = await get_request_for_user(db, request_id, user, with_details=False)
-    return await stored_file_response(db, req, file_id)
+    return await request_file_response(db, req, file_id)

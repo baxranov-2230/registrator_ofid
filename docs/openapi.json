@@ -1427,6 +1427,216 @@
         }
       }
     },
+    "/api/v1/admin/categories/{category_id}/files": {
+      "get": {
+        "tags": [
+          "admin-catalogs"
+        ],
+        "summary": "List Category Files",
+        "description": "The files an `auto_reply` service sends with its answer.",
+        "operationId": "list_category_files_api_v1_admin_categories__category_id__files_get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Category Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AutoReplyFileOut"
+                  },
+                  "title": "Response List Category Files Api V1 Admin Categories  Category Id  Files Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin-catalogs"
+        ],
+        "summary": "Upload Category File",
+        "description": "Add a file to the answer an `auto_reply` service sends.\n\nRequests answered from then on get it; earlier answers are left as sent.",
+        "operationId": "upload_category_file_api_v1_admin_categories__category_id__files_post",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Category Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_category_file_api_v1_admin_categories__category_id__files_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutoReplyFileOut"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/admin/categories/{category_id}/files/{file_id}": {
+      "get": {
+        "tags": [
+          "admin-catalogs"
+        ],
+        "summary": "Download Category File",
+        "operationId": "download_category_file_api_v1_admin_categories__category_id__files__file_id__get",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Category Id"
+            }
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "admin-catalogs"
+        ],
+        "summary": "Delete Category File",
+        "description": "Stop sending a file. Requests already answered keep their copy.",
+        "operationId": "delete_category_file_api_v1_admin_categories__category_id__files__file_id__delete",
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "category_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Category Id"
+            }
+          },
+          {
+            "name": "file_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "File Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/admin/groups/{group_id}": {
       "patch": {
         "tags": [
@@ -3811,6 +4021,46 @@
         ],
         "title": "AuditLogOut"
       },
+      "AutoReplyFileOut": {
+        "properties": {
+          "id": {
+            "type": "integer",
+            "title": "Id"
+          },
+          "category_id": {
+            "type": "integer",
+            "title": "Category Id"
+          },
+          "file_name": {
+            "type": "string",
+            "title": "File Name"
+          },
+          "file_size": {
+            "type": "integer",
+            "title": "File Size"
+          },
+          "mime_type": {
+            "type": "string",
+            "title": "Mime Type"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "category_id",
+          "file_name",
+          "file_size",
+          "mime_type",
+          "created_at"
+        ],
+        "title": "AutoReplyFileOut",
+        "description": "A file an `auto_reply` service sends with its answer."
+      },
       "Body_answer_api_v1_requests__request_id__answer_post": {
         "properties": {
           "text": {
@@ -3888,6 +4138,20 @@
         },
         "type": "object",
         "title": "Body_issue_token_api_v1_oauth_token_post"
+      },
+      "Body_upload_category_file_api_v1_admin_categories__category_id__files_post": {
+        "properties": {
+          "upload": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Upload"
+          }
+        },
+        "type": "object",
+        "required": [
+          "upload"
+        ],
+        "title": "Body_upload_category_file_api_v1_admin_categories__category_id__files_post"
       },
       "Body_upload_file_api_v1_integration_requests__request_id__files_post": {
         "properties": {
@@ -3988,6 +4252,29 @@
             ],
             "title": "Auto Reply Text"
           },
+          "auto_reply_description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Reply Description"
+          },
+          "assignee_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Id"
+          },
           "icon": {
             "anyOf": [
               {
@@ -4062,6 +4349,28 @@
             ],
             "title": "Auto Reply Text"
           },
+          "auto_reply_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Reply Description"
+          },
+          "assignee_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Id"
+          },
           "is_active": {
             "type": "boolean",
             "title": "Is Active"
@@ -4088,7 +4397,7 @@
           "is_active"
         ],
         "title": "CategoryOut",
-        "description": "A catalogue node: a request type (root) or a service type (child).\n\n`sla_hours`, `priority`, `routing` and `auto_reply_text` describe how a\nrequest filed under a service type is handled; on a request type they are\nunused."
+        "description": "A catalogue node: a request type (root) or a service type (child).\n\n`sla_hours`, `priority`, `routing`, `auto_reply_text`,\n`auto_reply_description` and `assignee_id` describe how a request filed\nunder a service type is handled; on a request type they are unused. An\nautomatic answer's files are listed on their own\n(`GET /admin/categories/{id}/files`)."
       },
       "CategoryTreeNode": {
         "properties": {
@@ -4144,6 +4453,28 @@
               }
             ],
             "title": "Auto Reply Text"
+          },
+          "auto_reply_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Reply Description"
+          },
+          "assignee_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Id"
           },
           "is_active": {
             "type": "boolean",
@@ -4275,6 +4606,29 @@
               }
             ],
             "title": "Auto Reply Text"
+          },
+          "auto_reply_description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Auto Reply Description"
+          },
+          "assignee_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assignee Id"
           },
           "icon": {
             "anyOf": [
@@ -5301,6 +5655,17 @@
           "text": {
             "type": "string",
             "title": "Text"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
           },
           "answered_at": {
             "type": "string",

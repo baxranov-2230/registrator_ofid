@@ -85,6 +85,8 @@ class RequestAnswerOut(BaseModel):
     """The final answer: what the student reads as the outcome of the request."""
 
     text: str
+    #: "Tasnifi" of the answer; only an automatic answer may carry one.
+    description: str | None = None
     answered_at: datetime
     answered_by: int | None = None
     answered_by_name: str | None = None
@@ -180,6 +182,7 @@ class RequestDetail(RequestSummary):
         if req.answered_at is not None:
             detail.answer = RequestAnswerOut(
                 text=req.answer_text or "",
+                description=req.answer_description,
                 answered_at=req.answered_at,
                 answered_by=req.answered_by,
                 answered_by_name=req.answerer.full_name if req.answerer else None,

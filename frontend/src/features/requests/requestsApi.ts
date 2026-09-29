@@ -27,6 +27,8 @@ export interface RequestCategoryOut {
   priority: string;
   routing: string;
   auto_reply_text: string | null;
+  auto_reply_description: string | null;
+  assignee_id: number | null;
   is_active: boolean;
   icon: string | null;
 }
@@ -90,6 +92,8 @@ export interface RequestFileOut {
 /** The final answer — what closed the request and what the student reads. */
 export interface RequestAnswerOut {
   text: string;
+  /** "Tasnifi"; only an automatic answer carries one. */
+  description: string | null;
   answered_at: string;
   answered_by: number | null;
   answered_by_name: string | null;
@@ -158,6 +162,8 @@ export const requestsApi = api.injectEndpoints({
   endpoints: (build) => ({
     listAssignees: build.query<AssigneeOut[], { faculty_id?: number } | void>({
       query: (params) => ({ url: "/users/assignees", params: params || undefined }),
+      // Staff edits (deactivation, role change) change who may be picked.
+      providesTags: [{ type: "User", id: "LIST" }],
     }),
     listRequests: build.query<Page<RequestSummary>, RequestListParams | void>({
       query: (params) => ({ url: "/requests", params: params || undefined }),

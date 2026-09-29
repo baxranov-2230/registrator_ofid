@@ -41,7 +41,8 @@ export const SERVICE_ROUTINGS: ServiceRouting[] = [
 
 /**
  * A root node is a request type (name + description); its children are
- * service types, which carry the SLA, priority and routing.
+ * service types, which carry the SLA, priority and routing — and, for general
+ * issues, the employee who receives the requests.
  */
 export interface CategoryNode {
   id: number;
@@ -52,9 +53,23 @@ export interface CategoryNode {
   priority: Priority;
   routing: ServiceRouting;
   auto_reply_text: string | null;
+  /** "Tasnifi" sent with `auto_reply_text`. */
+  auto_reply_description: string | null;
+  /** `general_manager` only; `null` sends requests to the flagged general managers. */
+  assignee_id: number | null;
   is_active: boolean;
   icon: string | null;
   children: CategoryNode[];
+}
+
+/** A file an `auto_reply` service sends with its answer. */
+export interface AutoReplyFileOut {
+  id: number;
+  category_id: number;
+  file_name: string;
+  file_size: number;
+  mime_type: string;
+  created_at: string;
 }
 
 export interface AuditLogOut {
@@ -133,6 +148,8 @@ export interface CategoryCreatePayload {
   priority?: Priority;
   routing?: ServiceRouting;
   auto_reply_text?: string | null;
+  auto_reply_description?: string | null;
+  assignee_id?: number | null;
   icon?: string | null;
 }
 
@@ -143,6 +160,8 @@ export interface CategoryUpdatePayload {
   priority?: Priority;
   routing?: ServiceRouting;
   auto_reply_text?: string | null;
+  auto_reply_description?: string | null;
+  assignee_id?: number | null;
   icon?: string | null;
   is_active?: boolean;
 }
@@ -282,6 +301,33 @@ export const adminApi = api.injectEndpoints({
       query: ({ id, data }) => ({ url: `/admin/categories/${id}`, method: "PATCH", body: data }),
       invalidatesTags: [{ type: "Category", id: "LIST" }],
     }),
+    listAutoReplyFiles: build.query<AutoReplyFileOut[], number>({
+      query: (id) => `/admin/categories/${id}/files`,
+      providesTags: (_r, _e, id) => [{ type: "Category", id: `FILES-${id}` }],
+    }),
+    uploadAutoReplyFile: build.mutation<AutoReplyFileOut, { id: number; file: File }>({
+      query: ({ id, file }) => {
+        const form = new FormData();
+        form.append("upload", file);
+        return { url: `/admin/categories/${id}/files`, method: "POST", body: form };
+      },
+      invalidatesTags: (_r, _e, { id }) => [{ type: "Category", id: `FILES-${id}` }],
+    }),
+    deleteAutoReplyFile: build.mutation<void, { id: number; fileId: number }>({
+      query: ({ id, fileId }) => ({
+        url: `/admin/categories/${id}/files/${fileId}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (_r, _e, { id }) => [{ type: "Category", id: `FILES-${id}` }],
+    }),
+    /** As an object URL, like `downloadRequestFile`. */
+    downloadAutoReplyFile: build.mutation<string, { id: number; fileId: number }>({
+      query: ({ id, fileId }) => ({
+        url: `/admin/categories/${id}/files/${fileId}`,
+        responseHandler: async (response: Response) =>
+          response.ok ? URL.createObjectURL(await response.blob()) : response.json(),
+      }),
+    }),
     deactivateCategory: build.mutation<void, number>({
       query: (id) => ({ url: `/admin/categories/${id}`, method: "DELETE" }),
       invalidatesTags: [{ type: "Category", id: "LIST" }],
@@ -329,6 +375,10 @@ export const {
   useCreateCategoryMutation,
   useUpdateCategoryMutation,
   useDeactivateCategoryMutation,
+  useListAutoReplyFilesQuery,
+  useUploadAutoReplyFileMutation,
+  useDeleteAutoReplyFileMutation,
+  useDownloadAutoReplyFileMutation,
   useListApiClientsQuery,
   useCreateApiClientMutation,
   useUpdateApiClientMutation,

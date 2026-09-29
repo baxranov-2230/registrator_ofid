@@ -11,8 +11,10 @@ under decides the route (`ServiceRouting`, set in Murojaat turlari):
      own department when there is one, otherwise any from the faculty;
   2. failing that, a registrator bound to the faculty.
 
-* `general_manager` — a staff member or registrator flagged as the manager
-  for general issues, whatever the student's faculty.
+* `general_manager` — whatever the student's faculty, the employee chosen on
+  the service itself (`RequestCategory.assignee_id`); when none is chosen, or
+  the chosen one can no longer take requests, a staff member or registrator
+  flagged as the manager for general issues.
 
 * `auto_reply` — nobody; the system answers on the spot (see
   `request_service.create_request`).
@@ -28,7 +30,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Employee, Faculty, Request, Role, User
+from app.models import Employee, Faculty, Request, RequestCategory, Role, User
 from app.models.category import ServiceRouting
 from app.models.request import RequestStatus
 
@@ -179,13 +181,44 @@ async def find_general_manager(db: AsyncSession) -> User | None:
     return await _least_loaded(db, list(managers))
 
 
-async def resolve_handler(db: AsyncSession, student: User, routing: str) -> User:
-    """The employee a request filed under a service with `routing` goes to.
+async def find_service_assignee(db: AsyncSession, assignee_id: int) -> User | None:
+    """The employee chosen on a service, if they can still take requests.
+
+    The choice is checked when it is saved, but the employee may since have
+    been deactivated or moved to a role routing never hands work to.
+    """
+    return (
+        await db.execute(
+            select(User)
+            .join(Role)
+            .where(
+                User.id == assignee_id,
+                User.is_active.is_(True),
+                Role.name.in_((Role.STAFF, Role.REGISTRATOR)),
+            )
+            .options(selectinload(User.role))
+        )
+    ).scalar_one_or_none()
+
+
+async def resolve_handler(db: AsyncSession, student: User, service: RequestCategory) -> User:
+    """The employee a request filed under `service` goes to.
 
     Not for `auto_reply` services: those have no handler at all.
     """
-    if routing == ServiceRouting.GENERAL_MANAGER:
-        handler = await find_general_manager(db)
+    if service.routing == ServiceRouting.GENERAL_MANAGER:
+        handler = None
+        if service.assignee_id is not None:
+            handler = await find_service_assignee(db, service.assignee_id)
+            if handler is None:
+                log.warning(
+                    "Service %s names employee %s, who can no longer take requests; "
+                    "falling back to the general managers",
+                    service.id,
+                    service.assignee_id,
+                )
+        if handler is None:
+            handler = await find_general_manager(db)
         if handler is None:
             raise NoGeneralManager()
         log.info(

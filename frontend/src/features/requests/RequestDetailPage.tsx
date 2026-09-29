@@ -195,6 +195,16 @@ export default function RequestDetailPage() {
                     {formatDateTime(data.answer.answered_at)}
                   </Typography>
                 </Stack>
+                {data.answer.description && (
+                  <Typography
+                    variant="subtitle1"
+                    fontWeight={600}
+                    mb={1}
+                    sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}
+                  >
+                    {data.answer.description}
+                  </Typography>
+                )}
                 <Typography variant="body1" sx={{ whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
                   {data.answer.text}
                 </Typography>

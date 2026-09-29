@@ -116,15 +116,22 @@ export default function StaffUsersPage() {
   }, [registrators, faculties]);
 
   /**
-   * Service types routed to general issues are refused (409) while nobody is
-   * flagged to receive them, so that gap is surfaced the same way.
+   * Service types routed to general issues are refused (409) while nobody can
+   * receive them — neither an employee chosen on the service nor anyone
+   * flagged — so that gap is surfaced the same way.
    */
   const unhandledGeneralServices = useMemo(() => {
-    const covered = [...registrators, ...staff].some((u) => u.is_active && u.is_general_manager);
-    if (covered) return [];
+    const handlers = [...registrators, ...staff].filter((u) => u.is_active);
+    if (handlers.some((u) => u.is_general_manager)) return [];
+    const handlerIds = new Set(handlers.map((u) => u.id));
     return catalog
       .flatMap((type) => type.children)
-      .filter((s) => s.is_active && s.routing === "general_manager");
+      .filter(
+        (s) =>
+          s.is_active &&
+          s.routing === "general_manager" &&
+          !(s.assignee_id !== null && handlerIds.has(s.assignee_id)),
+      );
   }, [registrators, staff, catalog]);
 
   const filtered = useMemo(() => {

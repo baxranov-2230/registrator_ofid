@@ -33,8 +33,8 @@ from app.api.v1.requests import (
     attach_file,
     file_request,
     post_message,
+    request_file_response,
     resubmit_returned,
-    stored_file_response,
 )
 from app.core.config import settings
 from app.core.db import get_db
@@ -332,7 +332,7 @@ async def download_file(
     client: ApiClient = Security(get_current_client, scopes=_READ),
 ) -> FileResponse:
     req = await _owned_request(db, request_id, client)
-    return await stored_file_response(db, req, file_id)
+    return await request_file_response(db, req, file_id)
 
 
 @router.post("/requests/{request_id}/resubmit", response_model=RequestDetail)

@@ -7,11 +7,11 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.models import Message, Request, RequestCategory, RequestHistory, User
+from app.models import Message, Request, RequestCategory, RequestFile, RequestHistory, User
 from app.models.category import ServiceRouting
 from app.models.request import RequestStatus
 from app.models.role import Role
-from app.services.catalog_service import resolve_service
+from app.services.catalog_service import list_auto_reply_files, resolve_service
 from app.services.labels import status_label
 from app.services.routing_service import resolve_handler
 from app.services.sla_calendar import add_working_time, sla_deadline_from, working_time_between
@@ -124,7 +124,7 @@ async def create_request(
     # decides: its faculty manager, the general-issues manager, or nobody when
     # the system answers itself. Routing refuses rather than guessing when
     # nobody fits.
-    assignee = None if auto_reply else await resolve_handler(db, student, category.routing)
+    assignee = None if auto_reply else await resolve_handler(db, student, category)
 
     tracking_no = await generate_tracking_no(db, redis)
     now = datetime.now(UTC)
@@ -149,11 +149,26 @@ async def create_request(
         api_client_id=api_client_id,
     )
     if auto_reply:
-        # Answered and closed on the spot; no manager ever sees it.
+        # Answered and closed on the spot; no manager ever sees it. The
+        # service's files go out as answer files pointing at the bytes stored
+        # once for the service; setting the collection here also leaves it
+        # loaded for the caller, which reports them.
         req.status = RequestStatus.COMPLETED
         req.answer_text = category.auto_reply_text
+        req.answer_description = category.auto_reply_description
         req.answered_at = now
         req.closed_at = now
+        req.files = [
+            RequestFile(
+                uploaded_by=f.uploaded_by,
+                file_path=f.file_path,
+                file_name=f.file_name,
+                file_size=f.file_size,
+                mime_type=f.mime_type,
+                is_answer=True,
+            )
+            for f in await list_auto_reply_files(db, category)
+        ]
     db.add(req)
     await db.flush()
 

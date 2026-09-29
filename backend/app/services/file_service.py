@@ -4,8 +4,14 @@ import secrets
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile
+from fastapi.responses import FileResponse
 
 from app.core.config import settings
+
+#: Files one answer may carry, whether a handler writes it or a service sends
+#: it automatically. Enough for a document and its annexes; more is a sign of
+#: the wrong channel.
+MAX_ANSWER_FILES = 10
 
 _ALLOWED_MIME = {
     "application/pdf": ".pdf",
@@ -67,7 +73,34 @@ def resolve_stored_path(stored: str) -> Path:
     return full
 
 
+def stored_file_response(stored: str, *, mime_type: str, file_name: str) -> FileResponse:
+    """Serve a stored file as a download."""
+    path = resolve_stored_path(stored)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Fayl diskda topilmadi")
+    return FileResponse(
+        path,
+        media_type=mime_type,
+        filename=file_name,
+        # Never let the browser render an upload inline in our own origin.
+        headers={"X-Content-Type-Options": "nosniff", "Content-Disposition": "attachment"},
+    )
+
+
 async def save_upload(upload: UploadFile, request_id: int, uploader_id: int) -> dict:
+    return await _store(upload, Path(str(request_id)))
+
+
+async def save_auto_reply_upload(upload: UploadFile, category_id: int) -> dict:
+    """Store a file an `auto_reply` service sends with its answer.
+
+    Kept apart from the per-request folders, which are named by bare ids.
+    """
+    return await _store(upload, Path("auto_reply") / str(category_id))
+
+
+async def _store(upload: UploadFile, folder: Path) -> dict:
+    """Check an upload and write it under `folder`, relative to STORAGE_DIR."""
     max_bytes = settings.max_upload_mb * 1024 * 1024
     content = await upload.read(max_bytes + 1)
     if len(content) > max_bytes:
@@ -81,17 +114,16 @@ async def save_upload(upload: UploadFile, request_id: int, uploader_id: int) -> 
 
     mime = _sniff_mime(content, declared)
 
-    root = Path(settings.storage_dir)
-    req_dir = root / str(request_id)
-    req_dir.mkdir(parents=True, exist_ok=True)
+    target = Path(settings.storage_dir) / folder
+    target.mkdir(parents=True, exist_ok=True)
 
     safe_name = _safe_filename(upload.filename or "file")
     stored_name = f"{secrets.token_hex(8)}_{safe_name}"
-    (req_dir / stored_name).write_bytes(content)
+    (target / stored_name).write_bytes(content)
 
     return {
         # Relative to STORAGE_DIR so the rows survive a change of mount point.
-        "file_path": str(Path(str(request_id)) / stored_name),
+        "file_path": str(folder / stored_name),
         "file_name": safe_name,
         "file_size": len(content),
         "mime_type": mime,
